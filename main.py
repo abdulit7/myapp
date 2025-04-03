@@ -55,4 +55,5 @@ def main(page: ft.Page):
     # Start the app at the dashboard page
     page.go("/dashboard")
 
-ft.app(target=main, assets_dir="assets", view=ft.WEB_BROWSER, port=8080)
+ft.app(target=main, assets_dir="assets", view=None, port=8000, host="0.0.0.0")
+
