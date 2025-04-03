@@ -1,0 +1,56 @@
+name: Flet Web Build
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: 3.12.2
+  FLUTTER_VERSION: 3.22.2
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Python Dependencies
+      working-directory: myapp  # Set correct working directory
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt || echo "No requirements.txt found, skipping..."
+
+    - name: Setup Flutter (for Flet)
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+
+    - name: Verify Repository Structure
+      run: ls -la
+      working-directory: myapp  # Ensure it's inside "myapp"
+
+    - name: Build Flet Web App
+      working-directory: myapp  # Run inside "myapp"
+      run: flet build web --verbose  
+
+    - name: Upload Web Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-build-artifact
+        path: myapp/build/web  # Corrected path
+        if-no-files-found: warn
+        overwrite: false
