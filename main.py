@@ -55,5 +55,7 @@ def main(page: ft.Page):
     # Start the app at the dashboard page
     page.go("/dashboard")
 
-ft.app(target=main, assets_dir="assets", view=None, port=8080, host="0.0.0.0")
+#ft.app(target=main, assets_dir="assets", view=None, port=8080, host="0.0.0.0")       for docker
+
+ft.app(target=main, view=ft.WEB_BROWSER)   # for github
 
