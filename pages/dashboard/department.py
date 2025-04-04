@@ -18,7 +18,7 @@ class Department(ft.Container):
         add_department_button = ft.ElevatedButton(
             icon=ft.Icons.ADD,
             text="Add Department",
-            bgcolor=ft.Colors.GREEN_400,
+            bgcolor=ft.Colors.YELLOW_600,
             width=180,
             height=50,
             color=ft.Colors.WHITE,
