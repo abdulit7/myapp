@@ -1,7 +1,6 @@
 import flet as ft
 import mysql.connector
-from nav.sidebar import Sidebar
-from nav.menubar import TopBarPage
+#from nav.menubar import TopBarPage
 from components.fields import CustomTextField
 
 class UserForm(ft.Container):
@@ -22,6 +21,27 @@ class UserForm(ft.Container):
         self.branch_field = CustomTextField(label="Branch")
         self.can_login_field = ft.Checkbox(label="This User Can Login")
 
+        c1 = ft.Container(width=50, height=50, bgcolor="red", animate_position=1000)
+
+        c2 = ft.Container(
+            width=50, height=50, bgcolor="green", top=60, left=0, animate_position=500
+        )
+
+        c3 = ft.Container(
+            width=50, height=50, bgcolor="blue", top=120, left=0, animate_position=1000
+        )
+
+        def animate_container(e):
+            c1.top = 20
+            c1.left = 200
+            c2.top = 100
+            c2.left = 40
+            c3.top = 180
+            c3.left = 100
+            page.update()
+
+      
+        
         # Department Dropdown (Loads department ID and name)
         self.department_dropdown = ft.Dropdown(
             label="Department",
@@ -37,9 +57,8 @@ class UserForm(ft.Container):
                     col={"sm": 12, "md": 3},
                     content=ft.Column(
                         controls=[
-                            TopBarPage(page),
-                            ft.Text("Menu", size=18, weight=ft.FontWeight.W_600),
-                            Sidebar(page),
+                            ft.Stack([c1, c2, c3], height=250),
+                            ft.ElevatedButton("Animate!", on_click=animate_container),
                         ],
                         spacing=20
                     )

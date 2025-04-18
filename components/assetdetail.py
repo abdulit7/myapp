@@ -1,6 +1,6 @@
 import flet as ft
-from nav.sidebar import SidebarPage
-from nav.menubar import TopBarPage
+#from nav.sidebar import SidebarPage
+#from nav.menubar import TopBarPage
 
 class AssetDetail(ft.Container):
     def __init__(self, page: ft.Page):
@@ -117,16 +117,16 @@ class AssetDetail(ft.Container):
         # Main Layout
         self.content = ft.Column(
             controls=[
-                TopBarPage(page),
+                #TopBarPage(page),
                 ft.Row(
                     controls=[
                         ft.Column(  # Use Column to align sidebar to top
                             controls=[
-                                ft.Container(
-                                    content=SidebarPage(page),
-                                    width=200,
-                                    expand=True,  # Make sidebar fill available height
-                                ),
+                                # ft.Container(
+                                #     content=SidebarPage(page),
+                                #     width=200,
+                                #     expand=True,  # Make sidebar fill available height
+                                # ),
                             ],
                             #expand=True,  # Make the column expand to fill the row
                         ),

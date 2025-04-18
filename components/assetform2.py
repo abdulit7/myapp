@@ -1,7 +1,7 @@
 import flet as ft
 import datetime
-from nav.sidebar import SidebarPage
-from nav.menubar import TopBarPage
+#from nav.sidebar import SidebarPage
+#from nav.menubar import TopBarPage
 from components.fields import CustomTextField
 
 class AssetForm(ft.Container):
@@ -91,11 +91,11 @@ class AssetForm(ft.Container):
                     controls=[
                         ft.Column(
                             controls=[
-                                ft.Container(
-                                    content=SidebarPage(page),
-                                    width=200,
-                                    expand=True,
-                                ),
+                                # ft.Container(
+                                #     content=SidebarPage(page),
+                                #     width=200,
+                                #     expand=True,
+                                # ),
                             ],
                         ),
                         ft.Container(

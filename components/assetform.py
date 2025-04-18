@@ -1,8 +1,9 @@
 import flet as ft
-import datetime
 import mysql.connector
-from nav.sidebar import SidebarPage
-from nav.menubar import TopBarPage
+import random
+import asyncio
+import datetime
+
 from components.fields import CustomTextField
 
 class AssetForm(ft.Container):
@@ -10,176 +11,254 @@ class AssetForm(ft.Container):
         super().__init__()
 
         page.window.title = "Asset Management System"
-        page.scroll = "adaptive"
-        self.expand = True
         self.page = page
+        self.expand = True
+
+        # Stack and container dimensions
+        self.stack_width = 300
+        self.stack_height = 250
+        self.container_size = 50
+
+        # Initial positions of the containers
+        self.c1 = ft.Container(
+            width=self.container_size,
+            height=self.container_size,
+            bgcolor="red",
+            top=0,
+            left=0,
+            animate_position=1000
+        )
+
+        self.c2 = ft.Container(
+            width=self.container_size,
+            height=self.container_size,
+            bgcolor="green",
+            top=60,
+            left=0,
+            animate_position=500
+        )
+
+        self.c3 = ft.Container(
+            width=self.container_size,
+            height=self.container_size,
+            bgcolor="blue",
+            top=120,
+            left=0,
+            animate_position=1000
+        )
+
+        # File Picker for Uploading Files
+        self.file_picker = ft.FilePicker(on_result=self.file_picker_result)
+        page.overlay.append(self.file_picker)
+
+        # Date Picker for Purchase Date
+        self.date_picker = ft.DatePicker(
+            on_change=self.date_picker_result,
+            on_dismiss=self.date_picker_dismiss,
+            first_date=datetime.datetime(2000, 1, 1),
+            last_date=datetime.datetime.now()
+        )
+        page.overlay.append(self.date_picker)
 
         # Form Fields
+        category_options = [
+            ft.dropdown.Option("Desktop"),
+            ft.dropdown.Option("Wyse"),
+            ft.dropdown.Option("Keyboard"),
+            ft.dropdown.Option("LCD"),
+        ]
+
         self.name_field = CustomTextField(label="Name")
-        self.category_field = CustomTextField(label="Category")
+        self.category_field = ft.Dropdown(
+            label="Category",
+            options=category_options,
+            hint_text="Select Category",
+        )
         self.company_field = CustomTextField(label="Company")
         self.model_field = CustomTextField(label="Model")
         self.serial_no_field = CustomTextField(label="Serial No")
         self.purchaser_field = CustomTextField(label="Purchaser")
         self.location_field = CustomTextField(label="Location")
-
-        # Bill Copy Upload
-        self.bill_copy_display = ft.Text("No file selected")  
-        self.file_picker = ft.FilePicker(on_result=self.bill_copy_picked)
         self.bill_copy_field = ft.ElevatedButton(
             icon=ft.icons.FILE_UPLOAD,
             text="Upload Bill Copy",
-            on_click=lambda e: self.file_picker.pick_files()
+            on_click=lambda e: setattr(self, 'last_picker_button', "bill_copy") or self.file_picker.pick_files()
         )
-
-        # Date Picker (Default to current date)
-        self.purchase_date_text = ft.Text(datetime.datetime.today().strftime("%Y-%m-%d"))
-
-        self.date_picker = ft.DatePicker(
-            value=datetime.datetime.today(),
-            first_date=datetime.datetime(year=2023, month=10, day=1),
-            last_date=datetime.datetime(year=2025, month=12, day=31),
-            on_change=self.handle_date_change
+        self.bill_copy_display = ft.Text("No file selected")
+        self.image_field = ft.ElevatedButton(
+            icon=ft.icons.IMAGE,
+            text="Upload Asset Image",
+            on_click=lambda e: setattr(self, 'last_picker_button', "image") or self.file_picker.pick_files()
         )
-
+        self.image_display = ft.Text("No image selected")
+        self.purchase_date_text = ft.Text("No date selected")
         self.purchase_date_button = ft.ElevatedButton(
-            "Pick date",
             icon=ft.icons.CALENDAR_MONTH,
-            on_click=lambda e: page.open(self.date_picker)
+            text="Select Purchase Date",
+            on_click=lambda e: self.show_date_picker()
         )
-
         self.warranty_field = CustomTextField(label="Warranty")
         self.price_field = CustomTextField(label="Price")
         self.status_field = ft.Dropdown(
+            label="Status",
             options=[ft.dropdown.Option("Available")],
+            value="Available",
         )
-
-        self.save_button = ft.ElevatedButton(
-            "Save", icon=ft.icons.SAVE, bgcolor=ft.colors.GREEN_400, 
-            color=ft.colors.WHITE, on_click=self.add_asset
-        )
-        self.cancel_button = ft.ElevatedButton(
-            "Cancel", icon=ft.icons.CANCEL, bgcolor=ft.colors.RED_400, 
-            color=ft.colors.WHITE
-        )
-
-        # Form Layout
-        self.content = ft.Column(
+        self.status_field_row = ft.Row(
             controls=[
-                TopBarPage(page),
-                ft.Row(
-                    controls=[
-                        ft.Column(
-                            controls=[ft.Container(content=SidebarPage(page), width=200, expand=True)],
-                        ),
-                        ft.Container(
-                            content=ft.Container(
-                                ft.Column(
-                                    controls=[
-                                        ft.Text("Asset Register", size=24, weight=ft.FontWeight.BOLD, color=ft.colors.BLUE_900),
-                                        self.build_form_row("Name", self.name_field),
-                                        self.build_form_row("Category", self.category_field),
-                                        self.build_form_row("Company", self.company_field),
-                                        self.build_form_row("Model", self.model_field),
-                                        self.build_form_row("Serial No", self.serial_no_field),
-                                        self.build_form_row("Purchaser", self.purchaser_field),
-                                        self.build_form_row("Location", self.location_field),
-                                        self.build_form_row("Bill Copy", self.bill_copy_field),
-                                        self.build_form_row("Bill Copy", self.bill_copy_display),
-
-                                        # Purchase Date Row
-                                        ft.ResponsiveRow(
-                                            controls=[
-                                                ft.Container(
-                                                    width=150,
-                                                    col={"xs": 12, "md": 3},
-                                                    content=ft.Text("Purchase Date", size=18, weight=ft.FontWeight.W_500, color=ft.colors.BLUE_GREY_700),
-                                                ),
-                                                ft.Container(
-                                                    expand=True,
-                                                    col={"xs": 12, "md": 9},
-                                                    content=ft.Row([
-                                                        self.purchase_date_button,
-                                                        self.purchase_date_text,
-                                                    ]),
-                                                ),
-                                            ],
-                                            spacing=10,
-                                        ),
-
-                                        self.build_form_row("Warranty", self.warranty_field),
-                                        self.build_form_row("Price", self.price_field),
-                                        self.build_form_row("Status", self.status_field),
-                                        
-                                        ft.Row(
-                                            controls=[self.save_button, self.cancel_button],
-                                            alignment=ft.MainAxisAlignment.END,
-                                            spacing=20,
-                                        ),
-                                    ],
-                                    scroll="adaptive",
-                                    expand=True,
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                                bgcolor=ft.colors.WHITE,
-                                border_radius=ft.border_radius.all(15),
-                                padding=20,
-                                shadow=ft.BoxShadow(blur_radius=10, spread_radius=1, color=ft.colors.GREY_400),
-                            ),
-                            col={"sm": 12, "md": 9},
-                            expand=True,
-                            bgcolor=ft.colors.GREY_100,
-                            padding=30,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.START,
-                    spacing=0,
-                    expand=True,
-                ),
+                self.status_field,
+                ft.Icon(name=ft.icons.ARROW_DROP_DOWN, color=ft.colors.BLUE_500, size=20),
             ],
             spacing=0,
+            alignment=ft.MainAxisAlignment.END,
             expand=True,
         )
 
-        page.overlay.append(self.file_picker)
-        page.overlay.append(self.date_picker)
-        page.update()
+        # Form Layout
+        self.content = ft.ResponsiveRow(
+            controls=[
+                # Sidebar Area with Animated Containers
+                ft.Container(
+                    width=250,
+                    col={"sm": 12, "md": 3},
+                    content=ft.Column(
+                        controls=[
+                            ft.Stack([self.c1, self.c2, self.c3], width=self.stack_width, height=self.stack_height)
+                        ],
+                        spacing=20
+                    )
+                ),
+                # Main Form Area
+                ft.Container(
+                    expand=True,
+                    col={"sm": 12, "md": 9},
+                    bgcolor=ft.Colors.GREY_100,
+                    padding=30,
+                    content=ft.Container(
+                        bgcolor=ft.Colors.WHITE,
+                        border_radius=ft.border_radius.all(15),
+                        padding=30,
+                        shadow=ft.BoxShadow(blur_radius=10, spread_radius=1, color=ft.Colors.GREY_400),
+                        content=ft.Column(
+                            controls=[
+                                ft.Text("Asset Registration", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
+                                self.build_form_row("Name", self.name_field),
+                                self.category_field,
+                                self.build_form_row("Company", self.company_field),
+                                self.build_form_row("Model", self.model_field),
+                                self.build_form_row("Serial No", self.serial_no_field),
+                                self.build_form_row("Purchaser", self.purchaser_field),
+                                self.build_form_row("Location", self.location_field),
+                                self.build_form_row("Upload Bill Copy", self.bill_copy_field),
+                                self.bill_copy_display,
+                                self.build_form_row("Upload Asset Image", self.image_field),
+                                self.image_display,
+                                self.build_form_row("Purchase Date", self.purchase_date_button),
+                                self.purchase_date_text,
+                                self.build_form_row("Warranty", self.warranty_field),
+                                self.build_form_row("Price", self.price_field),
+                                self.build_form_row("Status", self.status_field_row),
+                                # Save and Cancel Buttons
+                                ft.Row(
+                                    controls=[
+                                        ft.ElevatedButton(
+                                            "Save",
+                                            icon=ft.icons.SAVE,
+                                            bgcolor=ft.Colors.GREEN_600,
+                                            color=ft.Colors.WHITE,
+                                            style=ft.ButtonStyle(
+                                                shape=ft.RoundedRectangleBorder(radius=10)
+                                            ),
+                                            on_click=self.save_asset
+                                        ),
+                                        ft.ElevatedButton(
+                                            "Cancel",
+                                            icon=ft.icons.CANCEL,
+                                            bgcolor=ft.Colors.RED_600,
+                                            color=ft.Colors.WHITE,
+                                            style=ft.ButtonStyle(
+                                                shape=ft.RoundedRectangleBorder(radius=10)
+                                            )
+                                        ),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.END,
+                                    spacing=20,
+                                )
+                            ],
+                            spacing=20,
+                        )
+                    )
+                )
+            ],
+            spacing=20
+        )
+
+        # Start the automatic movement
+        page.run_task(self.move_containers)
+
+    async def move_containers(self):
+        max_top = self.stack_height - self.container_size
+        max_left = self.stack_width - self.container_size
+
+        while True:
+            self.c1.top = random.randint(0, max_top)
+            self.c1.left = random.randint(0, max_left)
+
+            self.c2.top = random.randint(0, max_top)
+            self.c2.left = random.randint(0, max_left)
+
+            self.c3.top = random.randint(0, max_top)
+            self.c3.left = random.randint(0, max_left)
+
+            self.page.update()
+            await asyncio.sleep(1)
 
     def build_form_row(self, label_text, input_control):
-        """Builds a single row for the form with a label and input field."""
         return ft.ResponsiveRow(
             controls=[
                 ft.Container(
                     width=150,
-                    col={"xs": 9,"md": 9},
-                    content=ft.Text(label_text, size=18, weight=ft.FontWeight.W_500, color=ft.colors.BLUE_GREY_700),
+                    col={"xs": 12, "md": 3},
+                    content=ft.Text(label_text, size=18, weight=ft.FontWeight.W_500, color=ft.Colors.BLUE_GREY_700),
                 ),
                 ft.Container(
                     expand=True,
-                    col={"xs": 9,"md": 9},
+                    col={"xs": 12, "md": 9},
                     content=input_control,
                 ),
             ],
             spacing=10,
         )
 
-    def handle_date_change(self, e):
-        """Updates the text when a date is selected."""
-        selected_date = self.date_picker.value
-        if selected_date:
-            self.purchase_date_text.value = selected_date.strftime("%Y-%m-%d")
+    def show_date_picker(self):
+        self.date_picker.open = True
         self.page.update()
 
-    def bill_copy_picked(self, e: ft.FilePickerResultEvent):
+    def file_picker_result(self, e: ft.FilePickerResultEvent):
         if e.files:
-            selected_file = e.files[0]  
-            self.bill_copy_display.value = selected_file.name  
-        else:
-            self.bill_copy_display.value = "No file selected"
-        self.update()
+            if hasattr(self, 'last_picker_button') and self.last_picker_button == "bill_copy":
+                self.bill_copy_display.value = f"Selected: {e.files[0].name}"
+            elif hasattr(self, 'last_picker_button') and self.last_picker_button == "image":
+                self.image_display.value = f"Selected: {e.files[0].name}"
+            self.page.update()
 
-    def add_asset(self, e):
-        """Adds a new asset to the database."""
+    def date_picker_result(self, e):
+        if e.control.value:
+            self.purchase_date_text.value = e.control.value.strftime("%Y-%m-%d")
+        else:
+            self.purchase_date_text.value = "No date selected"
+        self.date_picker.open = False
+        self.page.update()
+
+    def date_picker_dismiss(self, e):
+        self.purchase_date_text.value = "No date selected"
+        self.date_picker.open = False
+        self.page.update()
+
+    def save_asset(self, e):
+        name = self.name_field.value
+        purchase_date = self.purchase_date_text.value if self.purchase_date_text.value != "No date selected" else None
+
         try:
             connection = mysql.connector.connect(
                 host="200.200.200.23",
@@ -188,43 +267,17 @@ class AssetForm(ft.Container):
                 database="itasset",
                 auth_plugin='mysql_native_password'
             )
-            cursor = connection.cursor()
-
-            query = """
-                INSERT INTO asset (name, category, company, model, serial_no, purchaser, location, warranty, price, status, bill_copy)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            values = (
-                self.name_field.value,
-                self.category_field.value,
-                self.company_field.value,
-                self.model_field.value,
-                self.serial_no_field.value,
-                self.purchaser_field.value,
-                self.location_field.value,
-                self.warranty_field.value,
-                self.price_field.value,
-                self.status_field.value,
-                self.bill_copy_display.value,
-            )
-
-            print(f"Executing SQL: {query} with values: {values}")
-
-            cursor.execute(query, values)
+            cur = connection.cursor()
+            sql = "INSERT INTO users (name, purchase_date) VALUES (%s, %s)"
+            cur.execute(sql, (name, purchase_date))
             connection.commit()
-            cursor.close()
-            connection.close()
-
-            self.page.snack_bar = ft.SnackBar(ft.Text("✅ Asset added successfully!"))
-            self.page.snack_bar.open = True
-            self.page.update()
-
-        except mysql.connector.Error as err:
-            print(f"❌ MySQL Error: {err}")
-            self.page.snack_bar = ft.SnackBar(ft.Text(f"❌ Error: {err}"))
-            self.page.snack_bar.open = True
-            self.page.update()
+            print("Asset saved successfully.")
+        except mysql.connector.Error as error:
+            print("Failed to insert record into MySQL table: {}".format(error))
+        finally:
+            if connection.is_connected():
+                cur.close()
+                connection.close()
 
 def AssetFormPage(page):
     return AssetForm(page)

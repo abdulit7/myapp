@@ -1,6 +1,4 @@
 import flet as ft
-from nav.sidebar import SidebarPage
-from nav.menubar import TopBarPage
 from components.manageasset import ManageAssetDialog
 from components.assetdialog import AssetDialog
 import mysql.connector
@@ -8,29 +6,22 @@ import mysql.connector
 class AssetPagee(ft.Container):
     def __init__(self, page: ft.Page):
         super().__init__()
-
         self.page = page
         self.expand = True
+
         page.window.title = "Asset Management System - Assets"
+        page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+        page.vertical_alignment = ft.MainAxisAlignment.START
 
-        
-
-
-
-        asset_dialog = AssetDialog(page)
-        
+        self.asset_dialog = AssetDialog(page)
         self.manage_Asset = ManageAssetDialog(page, self)
 
-
-# Product Detail Banner Start############################################################################################################
-
+        # Product Detail Banner
         def close_banner(e):
             page.close(self.banner)
             page.add(ft.Text("Action clicked: " + e.control.text))
 
-        action_button_style = ft.ButtonStyle(color=ft.Colors.BLUE)
-        
-        # Asset details
+        action_button_style = ft.ButtonStyle(color=ft.colors.BLUE)
         asset_details = {
             "Name": "Laptop",
             "Category": "Electronics",
@@ -42,381 +33,349 @@ class AssetPagee(ft.Container):
             "Price": "$1500",
             "Status": "Available"
         }
-
-        # Create asset detail rows
         asset_detail_rows = [
-            ft.Row(
-                controls=[
-                    ft.Text(f"{key}: ", weight=ft.FontWeight.BOLD),
-                    ft.Text(value)
-                ]
-            )
+            ft.Row(controls=[ft.Text(f"{key}: ", weight=ft.FontWeight.BOLD), ft.Text(value)])
             for key, value in asset_details.items()
         ]
 
+        # Hardcode the banner layout for larger screens (Row layout)
+        banner_content = ft.Row(
+            controls=[
+                ft.Column(
+                    controls=[ft.Text("Asset Details:", color=ft.colors.BLACK, weight=ft.FontWeight.BOLD, size=20)] + asset_detail_rows,
+                    expand=True,
+                ),
+                ft.Container(
+                    content=ft.Image(src="images/jojo.jpg", width=150, height=150, fit=ft.ImageFit.CONTAIN),
+                    alignment=ft.alignment.center,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+
         self.banner = ft.Banner(
-            bgcolor=ft.Colors.WHITE70,
-            leading=ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER, size=40),
-            content=ft.Row(
-                controls=[
-                    ft.Column(
-                        controls=[
-                            ft.Text(
-                                value="Asset Details:",
-                                color=ft.Colors.BLACK,
-                                weight=ft.FontWeight.BOLD,
-                                size=20
-                            ),
-                            *asset_detail_rows
-                        ],
-                        expand=True
-                    ),
-                    ft.Container(
-                        content=ft.Image(
-                            src="images/jojo.jpg",  # Replace with the actual image URL
-                            width=150,
-                            height=150,
-                            fit=ft.ImageFit.CONTAIN
-                        ),
-                        alignment=ft.alignment.center
-                    )
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            ),
+            bgcolor=ft.colors.WHITE70,
+            leading=ft.Icon(ft.icons.WARNING_AMBER_ROUNDED, color=ft.colors.AMBER, size=40),
+            content=banner_content,
             actions=[
-                ft.ElevatedButton(text="View", icon=ft.Icons.ACCESS_ALARM, width=100, style=action_button_style, on_click=close_banner),
+                ft.ElevatedButton(text="View", icon=ft.icons.ACCESS_ALARM, width=100, style=action_button_style, on_click=close_banner),
                 ft.TextButton(text="Ignore", style=action_button_style, on_click=close_banner),
                 ft.TextButton(text="Cancel", style=action_button_style, on_click=close_banner),
             ],
         )
-### Product Detail Banner End############################################################################################################
 
-        # Add Asset Button
-        add_asset_button = ft.ElevatedButton(
-            icon=ft.Icons.ADD,
+        # Add Asset Button with hardcoded size
+        self.add_asset_button = ft.ElevatedButton(
+            icon=ft.icons.ADD,
             text="Add Asset",
-            bgcolor=ft.Colors.GREEN_400,
-            width=150,
-            height=50,
-            color=ft.Colors.WHITE,
-            on_click=lambda e: page.go('/assetform')  # Assuming you have a route for adding assets
-        )
-
-        # Example Asset Table (You can customize this part)
-        mydb = mysql.connector.connect(
-            host="200.200.200.23",
-            user="root",
-            password="Pak@123",
-            database="itasset",
-            auth_plugin='mysql_native_password'
-        )
-        mycur = mydb.cursor()
-        mycur.execute("SELECT name, category, company, model, serial_no, purchaser, purchase_date, location, price, warranty, status FROM asset")
-        myresult = mycur.fetchall()
-
-        deployable_table = ft.DataTable(
-            width=5000,
-            height=500,
-            bgcolor=ft.Colors.WHITE,
-            border=ft.border.all(0.5, "red"),
-            border_radius=20,
-            vertical_lines=ft.BorderSide(0.2, "blue"),
-            horizontal_lines=ft.BorderSide(0.2, "green"),
-            heading_row_color=ft.Colors.GREY_300,
-            heading_row_height=100,
-            heading_text_style=ft.TextStyle(
-                color=ft.Colors.INDIGO_900,
-                weight=ft.FontWeight.BOLD,
-                size=16
+            on_click=lambda e: page.go('/assetform'),
+            style=ft.ButtonStyle(
+                bgcolor=ft.colors.GREEN_500,
+                color=ft.colors.WHITE,
+                padding=ft.Padding(16, 12, 16, 12),
+                shape=ft.RoundedRectangleBorder(radius=12),
+                overlay_color=ft.colors.with_opacity(0.15, ft.colors.WHITE),
+                elevation=6,
             ),
-            data_row_color={ft.ControlState.HOVERED: "#6fa8dc"},
-            column_spacing=30,
-            columns=[
-                ft.DataColumn(ft.Text("Name", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Category", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Company", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Model", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Serial No", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Purchaser", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Purchase Date", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Location", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Price", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Warranty", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Status", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Action", weight=ft.FontWeight.W_600)),
-            ],
-     
+            width=180,
+            height=55,
+    )
 
-            rows=[ ],
-        )
-        for x in myresult:
-            deployable_table.rows.append(
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(x[0])),
-                        ft.DataCell(ft.Text(x[1])),
-                        ft.DataCell(ft.Text(x[2])),
-                        ft.DataCell(ft.Text(x[3])),
-                        ft.DataCell(ft.Text(x[4])),
-                        ft.DataCell(ft.Text(x[5])),
-                        ft.DataCell(ft.Text(x[6])),
-                        ft.DataCell(ft.Text(x[7])),
-                        ft.DataCell(ft.Text(x[8])),
-                        ft.DataCell(ft.Text(x[9])),
-                        ft.DataCell(
+
+        # Database Connection
+        try:
+            mydb = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            print("Database connection successful")
+        except mysql.connector.Error as err:
+            print(f"Database connection failed: {err}")
+            mydb = None
+
+        # Fetch data (added image_path)
+        self.asset_data = []
+        if mydb:
+            try:
+                mycur = mydb.cursor()
+                mycur.execute("SELECT name, category, company, model, status, image_path FROM asset")
+                self.asset_data = mycur.fetchall()
+                print(f"Query returned {len(self.asset_data)} rows: {self.asset_data}")
+                mycur.close()
+                mydb.close()
+            except mysql.connector.Error as err:
+                print(f"Query failed: {err}")
+                self.asset_data = []
+
+        # Card creation function for deployable assets (with image)
+        def create_asset_card(data, status_color, on_manage_click, on_select):
+            # Extract data fields
+            name = str(data[0]) if data[0] is not None else ""
+            category = str(data[1]) if data[1] is not None else ""
+            company = str(data[2]) if data[2] is not None else ""
+            model = str(data[3]) if data[3] is not None else ""
+            status = str(data[4]) if data[4] is not None else ""
+
+            image_path = str(data[5]) if data[5] is not None else "images/placeholder.jpg"  # Fallback image
+
+            return ft.Card(
+                content=ft.Container(
+                    content=ft.Column(
+                        [
                             ft.Container(
-                                content=ft.Row(
-                                    controls=[
-                                        ft.Container(
-                                            width=15,
-                                            height=15,
-                                            bgcolor=ft.Colors.LIGHT_GREEN_ACCENT_400,
-                                            border_radius=10,  # Make it a circle
-                                        ),
-                                        ft.Text(x[10], color=ft.Colors.BLACK),
-                                    ],
-                                    spacing=10,  # Space between the circle and the text
-                                    alignment=ft.MainAxisAlignment.START,
+                                content=ft.Image(
+                                    src=image_path,
+                                    width=120,  # Hardcoded size
+                                    height=120,
+                                    fit=ft.ImageFit.CONTAIN,
+                                    error_content=ft.Icon(ft.icons.IMAGE_NOT_SUPPORTED, size=60, color=ft.colors.GREY_400),
                                 ),
-                                bgcolor=ft.Colors.WHITE,
-                                padding=10,  # Direct padding applied
-                                border_radius=5
-                            )
-                        ),
-                        ft.DataCell(ft.ElevatedButton("Manage", icon=ft.Icons.PENDING_ACTIONS, bgcolor=ft.Colors.BLUE_300, color=ft.Colors.WHITE, on_click=lambda e: self.manage_Asset.open())),
-                    ],
-                    selected=True,
-                    on_select_changed=lambda e: self.show_banner(),  # Show banner on selection
-                )
+                                alignment=ft.alignment.center,
+                                margin=ft.margin.only(bottom=10),
+                            ),
+                            ft.Row(
+                                [
+                                    ft.Text(f"Name: {name}", size=16, weight=ft.FontWeight.BOLD, color="#263238"),
+                                    ft.Container(
+                                        content=ft.Row(
+                                            [
+                                                ft.Container(width=15, height=15, bgcolor=status_color, border_radius=10),
+                                                ft.Text(status, color=ft.colors.BLACK),
+                                            ],
+                                            spacing=5,
+                                            alignment=ft.MainAxisAlignment.END,
+                                        ),
+                                        alignment=ft.alignment.center_right,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            ft.Text(f"Category: {category}", size=14, color="#263238"),
+                            ft.Text(f"Company: {company}", size=14, color="#263238"),
+                            ft.Text(f"Model: {model}", size=14, color="#263238"),
+                        
+                            ft.ElevatedButton(
+                                "Manage",
+                                icon=ft.icons.PENDING_ACTIONS,
+                                bgcolor=ft.colors.BLUE_300,
+                                color=ft.colors.WHITE,
+                                on_click=on_manage_click,
+                                width=100,
+                            ),
+                        ],
+                        spacing=5,
+                        alignment=ft.MainAxisAlignment.START,
+                    ),
+                    padding=15,
+                    bgcolor="#E3F2FD",
+                    border_radius=12,
+                    ink=True,
+                    on_click=on_select,
+                    width=300,
+                    height=300,
+                ),
+                elevation=5,
             )
 
-        deployed_table = ft.DataTable(
-            width=5000,
-            height=500,
-            bgcolor=ft.Colors.WHITE,
-            border=ft.border.all(0.5, "red"),
-            border_radius=20,
-            vertical_lines=ft.BorderSide(0.2, "blue"),
-            horizontal_lines=ft.BorderSide(0.2, "green"),
-            heading_row_color=ft.Colors.GREY_300,
-            heading_row_height=100,
-            heading_text_style=ft.TextStyle(
-                color=ft.Colors.INDIGO_900,
-                weight=ft.FontWeight.BOLD,
-                size=16
-            ),
-            data_row_color={ft.ControlState.HOVERED: "#6fa8dc"},
-            column_spacing=30,
-            columns=[
-                ft.DataColumn(ft.Text("Category", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Company", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Model", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Assign To", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Department", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Company", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Assign Date", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Status", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Action", weight=ft.FontWeight.W_600)),
+        # Deployable Cards
+        self.deployable_cards = ft.ResponsiveRow(
+            controls=[
+                ft.Container(
+                    content=create_asset_card(
+                        data=x,
+                        status_color=ft.colors.LIGHT_GREEN_ACCENT_400,
+                        on_manage_click=lambda e: self.manage_Asset.open(),
+                        on_select=lambda e: self.show_banner(),
+                    ),
+                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                    padding=ft.padding.all(10),
+                )
+                for x in self.asset_data
             ],
-            rows=[
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text("Laptop")),
-                        ft.DataCell(ft.Text("Dell")),
-                        ft.DataCell(ft.Text("XPS 15")),
-                        ft.DataCell(ft.Text("Abdul Salam")),
-                        ft.DataCell(ft.Text("IT")),
-                        ft.DataCell(ft.Text("GFI")),
-                        ft.DataCell(ft.Text("19-02-2025")),
-                        ft.DataCell(
-                            ft.Container(
-                                content=ft.Row(
-                                    controls=[
-                                        ft.Container(
-                                            width=15,
-                                            height=15,
-                                            bgcolor=ft.Colors.LIGHT_BLUE_ACCENT_700,
-                                            border_radius=10,  # Make it a circle
-                                        ),
-                                        ft.Text("Assigned", color=ft.Colors.BLACK),
-                                    ],
-                                    spacing=10,  # Space between the circle and the text
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                                bgcolor=ft.Colors.WHITE,
-                                padding=10,  # Direct padding applied
-                                border_radius=5
-                            )
-                        ),
-                        ft.DataCell(ft.ElevatedButton("Manage", icon=ft.Icons.PENDING_ACTIONS, bgcolor=ft.Colors.BLUE_300, color=ft.Colors.WHITE, on_click=lambda e: self.show_manage_asset_bottomsheet())),
-                    ],
-                    selected=True,
-                    on_select_changed=lambda e: self.show_banner(),  # Show banner on selection
-                ),
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text("Mouse")),
-                        ft.DataCell(ft.Text("Logitech")),
-                        ft.DataCell(ft.Text("MX Master 3")),
-                        ft.DataCell(ft.Text("Abdul Salam")),
-                        ft.DataCell(ft.Text("IT")),
-                        ft.DataCell(ft.Text("GFI")),
-                        ft.DataCell(ft.Text("19-02-2025")),
-                        ft.DataCell(
-                            ft.Container(
-                                content=ft.Row(
-                                    controls=[
-                                        ft.Container(
-                                            width=15,
-                                            height=15,
-                                            bgcolor=ft.Colors.LIGHT_BLUE_ACCENT_700,
-                                            border_radius=10,  # Make it a circle
-                                        ),
-                                        ft.Text("Assigned", color=ft.Colors.BLACK),
-                                    ],
-                                    spacing=10,  # Space between the circle and the text
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                                bgcolor=ft.Colors.WHITE,
-                                padding=10,  # Direct padding applied
-                                border_radius=5
-                            )
-                        ),
-                        ft.DataCell(ft.ElevatedButton("Manage", icon=ft.Icons.PENDING_ACTIONS, bgcolor=ft.Colors.BLUE_300, color=ft.Colors.WHITE, on_click=lambda e: self.show_manage_asset_bottomsheet())),
-                    ],
-                    selected=True,
-                    on_select_changed=lambda e: self.show_banner(),  # Show banner on selection
-                ),
-                # Add more rows as needed
-            ],
+            alignment=ft.MainAxisAlignment.START,
+            spacing=0,
+            run_spacing=0,
         )
 
-        faulted_table = ft.DataTable(
-            width=5000,
-            height=500,
-            bgcolor=ft.Colors.WHITE,
-            border=ft.border.all(0.5, "red"),
-            border_radius=20,
-            vertical_lines=ft.BorderSide(0.2, "blue"),
-            horizontal_lines=ft.BorderSide(0.2, "green"),
-            heading_row_color=ft.Colors.GREY_300,
-            heading_row_height=100,
-            heading_text_style=ft.TextStyle(
-                color=ft.Colors.INDIGO_900,
-                weight=ft.FontWeight.BOLD,
-                size=16
-            ),
-            data_row_color={ft.ControlState.HOVERED: "#6fa8dc"},
-            column_spacing=30,
-            columns=[
-                ft.DataColumn(ft.Text("Category", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Company", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Model", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Purchase Date", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Defected Date", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Reason", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Action", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Status", weight=ft.FontWeight.W_600)),
-                ft.DataColumn(ft.Text("Manage", weight=ft.FontWeight.W_600)),
-            ],
-            rows=[
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text("Laptop")),
-                        ft.DataCell(ft.Text("Dell")),
-                        ft.DataCell(ft.Text("XPS 15")),
-                        ft.DataCell(ft.Text("19-02-2023")),
-                        ft.DataCell(ft.Text("19-02-2024")),
-                        ft.DataCell(ft.Text("Faulty Screen")),
-                        ft.DataCell(ft.Text("Scraped")),
-                        ft.DataCell(
-                            ft.Container(
-                                content=ft.Row(
-                                    controls=[
-                                        ft.Container(
-                                            width=15,
-                                            height=15,
-                                            bgcolor=ft.Colors.RED_ACCENT_400,
-                                            border_radius=10,  # Make it a circle
+        # Deployed Cards
+        deployed_data = [
+            ("Laptop", "Dell", "XPS 15", "Abdul Salam", "IT", "GFI", "19-02-2025", "Assigned", ft.colors.LIGHT_BLUE_ACCENT_700),
+            ("Mouse", "Logitech", "MX Master 3", "Abdul Salam", "IT", "GFI", "19-02-2025", "Assigned", ft.colors.LIGHT_BLUE_ACCENT_700),
+        ]
+
+        def create_deployed_card(data, status_color, on_manage_click, on_select):
+            category, company, model, assign_to, department, company_2, assign_date, status, _ = data
+            return ft.Card(
+                content=ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Text(f"Category: {category}", size=16, weight=ft.FontWeight.BOLD, color="#263238"),
+                                    ft.Container(
+                                        content=ft.Row(
+                                            [
+                                                ft.Container(width=15, height=15, bgcolor=status_color, border_radius=10),
+                                                ft.Text(status, color=ft.colors.BLACK),
+                                            ],
+                                            spacing=5,
+                                            alignment=ft.MainAxisAlignment.END,
                                         ),
-                                        ft.Text("Disposed", color=ft.Colors.BLACK),
-                                    ],
-                                    spacing=10,  # Space between the circle and the text
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                                bgcolor=ft.Colors.WHITE,
-                                padding=10,  # Direct padding applied
-                                border_radius=5
-                            )
-                        ),
-                        ft.DataCell(ft.ElevatedButton("Manage", icon=ft.Icons.PENDING_ACTIONS, bgcolor=ft.Colors.BLUE_300, color=ft.Colors.WHITE, on_click=lambda e: self.show_manage_asset_bottomsheet())),
-                    ],
-                    selected=True,
-                    on_select_changed=lambda e: self.show_banner(),  # Show banner on selection
+                                        alignment=ft.alignment.center_right,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            ft.Text(f"Company: {company}", size=14, color="#263238"),
+                            ft.Text(f"Model: {model}", size=14, color="#263238"),
+                            ft.Text(f"Assign To: {assign_to}", size=14, color="#263238"),
+                            ft.Text(f"Department: {department}", size=14, color="#263238"),
+                            ft.Text(f"Company: {company_2}", size=14, color="#263238"),
+                            ft.Text(f"Assign Date: {assign_date}", size=14, color="#263238"),
+                            ft.ElevatedButton(
+                                "Manage",
+                                icon=ft.icons.PENDING_ACTIONS,
+                                bgcolor=ft.colors.BLUE_300,
+                                color=ft.colors.WHITE,
+                                on_click=on_manage_click,
+                                width=100,
+                            ),
+                        ],
+                        spacing=5,
+                        alignment=ft.MainAxisAlignment.START,
+                    ),
+                    padding=15,
+                    bgcolor="#E3F2FD",
+                    border_radius=12,
+                    ink=True,
+                    on_click=on_select,
                 ),
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text("Mouse")),
-                        ft.DataCell(ft.Text("Logitech")),
-                        ft.DataCell(ft.Text("MX Master 3")),
-                        ft.DataCell(ft.Text("987654321")),
-                        ft.DataCell(ft.Text("2023-06-01")),
-                        ft.DataCell(ft.Text("1 Year")),
-                        ft.DataCell(ft.Text("$100")),
-                        ft.DataCell(
-                            ft.Container(
-                                content=ft.Row(
-                                    controls=[
-                                        ft.Container(
-                                            width=15,
-                                            height=15,
-                                            bgcolor=ft.Colors.YELLOW_ACCENT_400,
-                                            border_radius=10,  # Make it a circle
-                                        ),
-                                        ft.Text("Sold", color=ft.Colors.BLACK),
-                                    ],
-                                    spacing=10,  # Space between the circle and the text
-                                    alignment=ft.MainAxisAlignment.START,
-                                ),
-                                bgcolor=ft.Colors.WHITE,
-                                padding=10,  # Direct padding applied
-                                border_radius=5
-                            )
-                        ),
-                        ft.DataCell(ft.ElevatedButton("Manage", icon=ft.Icons.PENDING_ACTIONS, bgcolor=ft.Colors.BLUE_300, color=ft.Colors.WHITE, on_click=lambda e: self.show_manage_asset_bottomsheet())),
-                    ],
-                    selected=True,
-                    on_select_changed=lambda e: self.show_banner(),  # Show banner on selection
-                ),
-                # Add more rows as needed
+                elevation=5,
+            )
+
+        self.deployed_cards = ft.ResponsiveRow(
+            controls=[
+                ft.Container(
+                    content=create_deployed_card(
+                        data=data,
+                        status_color=data[8],
+                        on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
+                        on_select=lambda e: self.show_banner(),
+                    ),
+                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                    padding=ft.padding.all(10),
+                )
+                for data in deployed_data
             ],
+            alignment=ft.MainAxisAlignment.START,
+            spacing=0,
+            run_spacing=0,
         )
 
-        t = ft.Tabs(
+        # Faulted Cards
+        faulted_data = [
+            ("Laptop", "Dell", "XPS 15", "19-02-2023", "19-02-2024", "Faulty Screen", "Scraped", "Disposed", ft.colors.RED_ACCENT_400),
+            ("Mouse", "Logitech", "MX Master 3", "987654321", "2023-06-01", "1 Year", "$100", "Sold", ft.colors.YELLOW_ACCENT_400),
+        ]
+
+        def create_faulted_card(data, status_color, on_manage_click, on_select):
+            category, company, model, purchase_date, defected_date, reason, action, status, _ = data
+            return ft.Card(
+                content=ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Text(f"Category: {category}", size=16, weight=ft.FontWeight.BOLD, color="#263238"),
+                                    ft.Container(
+                                        content=ft.Row(
+                                            [
+                                                ft.Container(width=15, height=15, bgcolor=status_color, border_radius=10),
+                                                ft.Text(status, color=ft.colors.BLACK),
+                                            ],
+                                            spacing=5,
+                                            alignment=ft.MainAxisAlignment.END,
+                                        ),
+                                        alignment=ft.alignment.center_right,
+                                    ),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            ft.Text(f"Company: {company}", size=14, color="#263238"),
+                            ft.Text(f"Model: {model}", size=14, color="#263238"),
+                            ft.Text(f"Purchase Date: {purchase_date}", size=14, color="#263238"),
+                            ft.Text(f"Defected Date: {defected_date}", size=14, color="#263238"),
+                            ft.Text(f"Reason: {reason}", size=14, color="#263238"),
+                            ft.Text(f"Action: {action}", size=14, color="#263238"),
+                            ft.ElevatedButton(
+                                "Manage",
+                                icon=ft.icons.PENDING_ACTIONS,
+                                bgcolor=ft.colors.BLUE_300,
+                                color=ft.colors.WHITE,
+                                on_click=on_manage_click,
+                                width=100,
+                            ),
+                        ],
+                        spacing=5,
+                        alignment=ft.MainAxisAlignment.START,
+                    ),
+                    padding=15,
+                    bgcolor="#E3F2FD",
+                    border_radius=12,
+                    ink=True,
+                    on_click=on_select,
+                ),
+                elevation=5,
+            )
+
+        self.faulted_cards = ft.ResponsiveRow(
+            controls=[
+                ft.Container(
+                    content=create_faulted_card(
+                        data=data,
+                        status_color=data[8],
+                        on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
+                        on_select=lambda e: self.show_banner(),
+                    ),
+                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                    padding=ft.padding.all(10),
+                )
+                for data in faulted_data
+            ],
+            alignment=ft.MainAxisAlignment.START,
+            spacing=0,
+            run_spacing=0,
+        )
+
+        # Tabs with cards
+        self.tabs = ft.Tabs(
             selected_index=0,
             animation_duration=300,
             tabs=[
                 ft.Tab(
                     text="Available",
-                    content=ft.Container(
-                        content=deployable_table,
-                        alignment=ft.alignment.top_left,
+                    content=ft.Column(
+                        controls=[self.deployable_cards],
+                        scroll=ft.ScrollMode.AUTO,
                         expand=True,
                     )
                 ),
                 ft.Tab(
                     text="Assigned",
-                    content=ft.Container(
-                        content=deployed_table,
-                        alignment=ft.alignment.top_left,
+                    content=ft.Column(
+                        controls=[self.deployed_cards],
+                        scroll=ft.ScrollMode.AUTO,
                         expand=True,
                     )
                 ),
                 ft.Tab(
                     text="Disposed/Sold",
-                    content=ft.Container(
-                        content=faulted_table,
-                        alignment=ft.alignment.top_left,
+                    content=ft.Column(
+                        controls=[self.faulted_cards],
+                        scroll=ft.ScrollMode.AUTO,
                         expand=True,
                     )
                 ),
@@ -424,59 +383,23 @@ class AssetPagee(ft.Container):
             expand=True,
         )
 
-        # Page Layout
         self.content = ft.Column(
             controls=[
-                TopBarPage(page),
-                ft.Row(
-                    controls=[
-                        ft.Column(  # Use Column to align sidebar to top
-                            controls=[
-                                ft.Container(
-                                    content=SidebarPage(page),
-                                    width=200,
-                                    expand=True,  # Make sidebar fill available height
-                                ),
-                            ],
-                        ),
-                        ft.Column(
-                            controls=[
-                                ft.Row(
-                                    controls=[
-                                        add_asset_button
-                                    ],
-                                ),
-                                t
-                            ],
-                            expand=True,
-                            alignment=ft.MainAxisAlignment.START,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.START,
-                    spacing=0,
-                    expand=True,
-                ),
+                ft.Divider(height=1, color=ft.colors.WHITE),
+                ft.Row(controls=[self.add_asset_button], alignment=ft.MainAxisAlignment.START),
+                self.tabs,
             ],
-            spacing=0,
             expand=True,
+            spacing=10,
         )
 
         page.update()
-        
 
     def show_banner(self):
         self.page.open(self.banner)
-    
-    def show_asset_dialog(self):
-        self.page.open(self.page_asset_dialog)
 
-
-    
-        
-
-
-
-
+    def show_manage_asset_bottomsheet(self):
+        self.page.show_bottom_sheet(self.manage_Asset)
 
 def asset_page(page):
     return AssetPagee(page)

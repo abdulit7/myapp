@@ -1,51 +1,66 @@
 import flet as ft
-import requests  # Ensure `requests` is installed: pip install requests
-
-API_URL = "http://localhost:5000/api/categories"  # Your Flask API URL
+import random
+import asyncio
 
 def main(page: ft.Page):
-    page.title = "Category Management"
+    # Define the Stack dimensions
+    stack_width = 300  # Assumed width for the Stack
+    stack_height = 250  # Height of the Stack
+    container_size = 50  # Width and height of each container
 
-    # Category Table with Image Column
-    category_table = ft.DataTable(
-        columns=[
-            ft.DataColumn(ft.Text("ID")),
-            ft.DataColumn(ft.Text("Category Name")),
-            ft.DataColumn(ft.Text("Description")),
-            ft.DataColumn(ft.Text("Image")),  # New column for image
-        ],
-        rows=[]
+    # Initial positions of the containers
+    c1 = ft.Container(
+        width=container_size,
+        height=container_size,
+        bgcolor="red",
+        top=0,
+        left=0,
+        animate_position=1000  # Animation duration in milliseconds
     )
 
-    def fetch_categories():
-        """Fetch data from the Flask API and populate the table."""
-        try:
-            response = requests.get(API_URL)
-            if response.status_code == 200:
-                categories = response.json()
-                category_table.rows.clear()
+    c2 = ft.Container(
+        width=container_size,
+        height=container_size,
+        bgcolor="green",
+        top=60,
+        left=0,
+        animate_position=500
+    )
 
-                for category in categories:
-                    category_table.rows.append(
-                        ft.DataRow(
-                            cells=[
-                                ft.DataCell(ft.Text(str(category["id"]))),
-                                ft.DataCell(ft.Text(category["name"])),
-                                ft.DataCell(ft.Text(category["description"])),
-                                ft.DataCell(ft.Image(category.get("image", ""), width=50, height=50)),  # Image
-                            ]
-                        )
-                    )
-                page.update()
-            else:
-                print(f"Error fetching categories: {response.status_code}")
-        except Exception as e:
-            print(f"Exception: {e}")
+    c3 = ft.Container(
+        width=container_size,
+        height=container_size,
+        bgcolor="blue",
+        top=120,
+        left=0,
+        animate_position=1000
+    )
 
-    # Fetch button
-    fetch_button = ft.ElevatedButton("Fetch Categories", on_click=lambda _: fetch_categories())
+    # Add the containers to the page
+    page.add(
+        ft.Stack([c1, c2, c3], width=stack_width, height=stack_height)
+    )
 
-    # Layout
-    page.add(fetch_button, category_table)
+    # Function to move containers to random positions
+    async def move_containers():
+        max_top = stack_height - container_size  # 250 - 50 = 200
+        max_left = stack_width - container_size  # 300 - 50 = 250
 
-ft.app(target=main)
+        while True:
+            # Assign random positions to each container
+            c1.top = random.randint(0, max_top)
+            c1.left = random.randint(0, max_left)
+
+            c2.top = random.randint(0, max_top)
+            c2.left = random.randint(0, max_left)
+
+            c3.top = random.randint(0, max_top)
+            c3.left = random.randint(0, max_left)
+
+            page.update()
+            await asyncio.sleep(1)  # Wait 2 seconds before moving again
+
+    # Start the automatic movement
+    page.run_task(move_containers)
+
+ft.app(main)

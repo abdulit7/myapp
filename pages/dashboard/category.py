@@ -1,7 +1,7 @@
 import flet as ft
 import mysql.connector
-from nav.menubar import TopBarPage
-from nav.sidebar import SidebarPage
+#from nav.menubar import TopBarPage
+#from nav.sidebar import SidebarPage
 from components.categoryform import CatDialog
 
 class Category(ft.Container):
@@ -97,16 +97,16 @@ class Category(ft.Container):
 
         self.content = ft.Column(
                 controls=[
-                    TopBarPage(page),
+                    #TopBarPage(page),
                     ft.Row(
                         controls=[
                             ft.Column(  # Use Column to align sidebar to top
                                 controls=[
-                                    ft.Container(
-                                        content=SidebarPage(page),
-                                        width=200,
-                                        expand=True,  # Make sidebar fill available height
-                                    ),
+                                    # ft.Container(
+                                    #     content=SidebarPage(page),
+                                    #     width=200,
+                                    #     expand=True,  # Make sidebar fill available height
+                                    # ),
                                 ],
                                 #expand=True,  # Make the column expand to fill the row
                             ),

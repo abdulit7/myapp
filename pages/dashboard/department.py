@@ -1,7 +1,7 @@
 import flet as ft
 import mysql.connector
-from nav.menubar import TopBarPage
-from nav.sidebar import SidebarPage
+#from nav.menubar import TopBarPage
+#from nav.sidebar import SidebarPage
 from components.departmentform import DepartDialog
 
 class Department(ft.Container):
@@ -58,12 +58,12 @@ class Department(ft.Container):
         # Page Layout
         self.content = ft.Column(
             controls=[
-                TopBarPage(page),
+                #TopBarPage(page),
                 ft.Row(
                     controls=[
-                        ft.Column(
-                            controls=[ft.Container(content=SidebarPage(page), width=200, expand=True)],
-                        ),
+                        # ft.Column(
+                        #     controls=[ft.Container(content=SidebarPage(page), width=200, expand=True)],
+                        # ),
                         ft.Column(
                             controls=[
                                 ft.Row(controls=[add_department_button]),

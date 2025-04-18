@@ -1,7 +1,7 @@
 import flet as ft
 import mysql.connector
-from nav.sidebar import SidebarPage
-from nav.menubar import TopBarPage
+#from nav.sidebar import SidebarPage
+#from nav.menubar import TopBarPage
 
 class Users(ft.Container):
     def __init__(self, page: ft.Page):
@@ -20,13 +20,13 @@ class Users(ft.Container):
         )
 
         mycur = mydb.cursor()
-        mycur.execute("SELECT * FROM users")
+        mycur.execute("SELECT * FROM users WHERE can_login = 1")
         myresult = mycur.fetchall()
 
         self.add_user_button = ft.ElevatedButton("Add User", on_click=lambda e: page.go("/userform"))
 
         # Admin DataTable
-        admin_table = ft.DataTable(
+        self.admin_table = ft.DataTable(
             width=5000,
             height=500,
             bgcolor=ft.Colors.WHITE,
@@ -57,7 +57,7 @@ class Users(ft.Container):
             rows=[ ],
         )
         for x in myresult:
-            admin_table.rows.append(
+            self.admin_table.rows.append(
                 ft.DataRow(
                     cells=[
                         ft.DataCell(ft.Text(x[1])),
@@ -119,15 +119,16 @@ class Users(ft.Container):
         )
 
         # Tabs
-        t = ft.Tabs(
+        self.tabs = ft.Tabs(
             selected_index=0,
             animation_duration=300,
             tabs=[
                 ft.Tab(
                     text="Admin",
-                    content=ft.Container(
-                        content=admin_table,
-                        alignment=ft.alignment.top_left,
+                    content=ft.Column(
+                        controls=[
+                            self.admin_table,],
+                        scroll=ft.ScrollMode.AUTO,
                         expand=True,
                     )
                 ),
@@ -148,41 +149,11 @@ class Users(ft.Container):
         # Layout
         self.content = ft.Column(
             controls=[
-                TopBarPage(page),
-                ft.Row(
-                    controls=[
-                        ft.Column(  # Use Column to align sidebar to top
-                            controls=[
-                                ft.Container(
-                                    content=SidebarPage(page),
-                                    width=200,
-                                    expand=True,  # Make sidebar fill available height
-                                ),
-                            ],
-                            #expand=True,  # Make the column expand to fill the row
-                        ),
-                        ft.Column(
-                            controls=[
-                                ft.Row(
-                                    controls=[
-                                        
-                                        self.add_user_button
-                                    ],
-                                    #alignment=ft.MainAxisAlignment.SPACE_BETWEEN
-                                ),
-                                t
-                            ],
-                            expand=True,
-                            alignment=ft.MainAxisAlignment.START,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.START,
-                    spacing=0,
-                    expand=True,
-                ),
+                ft.Row(controls=[self.add_user_button], alignment=ft.MainAxisAlignment.CENTER),
+                self.tabs,
             ],
-            spacing=0,
             expand=True,
+            spacing=10,
         )
 
         page.update()
