@@ -27,7 +27,7 @@ class ListScroll(ft.Container):
                 auth_plugin='mysql_native_password'
             )
             cursor = connection.cursor()
-            cursor.execute("SELECT COUNT(*) FROM asset")
+            cursor.execute("SELECT COUNT(*) FROM assets")
             total = cursor.fetchone()[0]
             cursor.close()
             connection.close()
@@ -51,7 +51,7 @@ class ListScroll(ft.Container):
                 auth_plugin='mysql_native_password'
             )
             cursor = connection.cursor()
-            cursor.execute("SELECT * FROM asset LIMIT 1 OFFSET %s", (index,))
+            cursor.execute("SELECT * FROM assets LIMIT 1 OFFSET %s", (index,))
             asset = cursor.fetchone()
             cursor.close()
             connection.close()
@@ -97,16 +97,14 @@ class ListScroll(ft.Container):
                 if asset:
                     try:
                         # Extract asset details with error handling
-                        asset_id = asset[0] if len(asset) > 0 else None
+                 
                         name = asset[1] if len(asset) > 1 and asset[1] else "N/A"
                         category = asset[2] if len(asset) > 2 and asset[2] else "N/A"
-                        status = asset[11] if len(asset) > 11 and asset[11] else "N/A"
-                        price = str(asset[10]) if len(asset) > 10 and asset[10] is not None else "N/A"
-                        image_path = asset[13] if len(asset) > 13 and asset[13] else "images/placeholder.jpg"
+                        status = asset[13] if len(asset) > 13 else "N/A"
+                        model = str(asset[4]) if len(asset) > 4 and asset[4] is not None else "N/A"
+                        image_path = asset[12] if len(asset) > 12 and asset[12] else "images/placeholder.jpg"
 
-                        # Status indicator color
-                        status_color = ft.Colors.GREEN_700 if status.lower() == "active" else ft.Colors.RED_700
-
+              
                         # Create the ListTile
                         item = ft.ListTile(
                             leading=ft.Image(
@@ -116,12 +114,12 @@ class ListScroll(ft.Container):
                                 fit=ft.ImageFit.CONTAIN,
                                 error_content=ft.Text("No Image", size=12, color=ft.Colors.GREY_700),
                             ),
-                            title=ft.Text(f"{name}", size=16, weight=ft.FontWeight.BOLD),
+                            title=ft.Text(f"{name}", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_800),
                             subtitle=ft.Column(
                                 controls=[
                                     ft.Text(f"Category: {category}", size=14),
-                                    ft.Text(f"Status: {status}", size=14, color=status_color),
-                                    ft.Text(f"Price: ${price}", size=14),
+                                    ft.Text(f"Status: {status}", size=14, color=ft.Colors.GREEN_700),
+                                    ft.Text(f"Model: ${model}", size=14),
                                 ],
                                 spacing=2,
                             ),

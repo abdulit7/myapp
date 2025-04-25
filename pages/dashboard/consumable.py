@@ -1,15 +1,16 @@
 import flet as ft
 import mysql.connector
+import os
 from components.manageasset import ManageAssetDialog
 from components.assetdialog import AssetDialog
 
-class AssetPagee(ft.Container):
+class Consumables(ft.Container):
     def __init__(self, page: ft.Page):
         super().__init__()
         self.page = page
         self.expand = True
 
-        page.window.title = "Asset Management System - Assets"
+        page.window.title = "Asset Management System - Consumables"
         page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
         page.vertical_alignment = ft.MainAxisAlignment.START
 
@@ -45,13 +46,7 @@ class AssetPagee(ft.Container):
                     expand=True,
                 ),
                 ft.Container(
-                    content=ft.Image(
-                        src="/images/jojo.jpg",  # Adjusted path
-                        width=150,
-                        height=150,
-                        fit=ft.ImageFit.CONTAIN,
-                        error_content=ft.Text("Banner image not found"),
-                    ),
+                    content=ft.Image(src="images/jojo.jpg", width=150, height=150, fit=ft.ImageFit.CONTAIN),
                     alignment=ft.alignment.center,
                 ),
             ],
@@ -71,8 +66,8 @@ class AssetPagee(ft.Container):
 
         self.add_asset_button = ft.ElevatedButton(
             icon=ft.icons.ADD,
-            text="Add Asset",
-            on_click=lambda e: page.go('/assetform'),
+            text="Add Consumable",
+            on_click=lambda e: page.go('/consumableform'),
             style=ft.ButtonStyle(
                 bgcolor=ft.colors.GREEN_500,
                 color=ft.colors.WHITE,
@@ -104,7 +99,7 @@ class AssetPagee(ft.Container):
         if mydb:
             try:
                 mycur = mydb.cursor()
-                mycur.execute("SELECT id, name, category, company, model, status, image_path FROM assets")
+                mycur.execute("SELECT id, name, category, company, model, status, image_path FROM consumables")
                 self.asset_data = mycur.fetchall()
                 print(f"Query returned {len(self.asset_data)} rows from assets: {self.asset_data}")
             except mysql.connector.Error as err:
@@ -119,7 +114,7 @@ class AssetPagee(ft.Container):
         if mydb:
             try:
                 mycur = mydb.cursor()
-                mycur.execute("SELECT id, name, category, company, model, deployed_to, user_department, deploy_date, image_path FROM deployed_assets")
+                mycur.execute("SELECT id, name, category, company, model, deployed_to, user_department, deploy_date, image_path FROM deplyed_consumables")
                 self.deployed_data = mycur.fetchall()
                 print(f"Query returned {len(self.deployed_data)} rows from deployed_assets: {self.deployed_data}")
             except mysql.connector.Error as err:
@@ -304,19 +299,25 @@ class AssetPagee(ft.Container):
         status = str(data[5]) if data[5] is not None else ""
         image_path = str(data[6]) if data[6] is not None else None
 
-        # Debug image path
+        # Debug and validate image path
         print(f"Processing asset: {name}, image_path: {image_path}")
         image_content = None
-        if image_path and image_path.startswith("/images/"):
-            image_content = ft.Image(
-                src=image_path,
-                width=120,
-                height=120,
-                fit=ft.ImageFit.CONTAIN,
-                error_content=ft.Text(f"Image not found: {image_path}"),
-            )
+        if image_path:
+            image_path = image_path.replace("\\", "/")
+            print(f"Normalized image_path: {image_path}")
+            if os.path.isfile(image_path):
+                image_content = ft.Image(
+                    src=image_path,
+                    width=120,
+                    height=120,
+                    fit=ft.ImageFit.CONTAIN,
+                    error_content=ft.Icon(ft.icons.IMAGE_NOT_SUPPORTED, size=60, color=ft.colors.GREY_400),
+                )
+                print(f"Image file found: {image_path}")
+            else:
+                print(f"Image file not found: {image_path}")
         else:
-            print(f"Invalid or missing image_path for {name}: {image_path}")
+            print(f"No image_path for {name}")
 
         card_content = [
             ft.Row(
@@ -384,19 +385,25 @@ class AssetPagee(ft.Container):
         deploy_date = str(data[7]) if data[7] is not None else ""
         image_path = str(data[8]) if data[8] is not None else None
 
-        # Debug image path
+        # Debug and validate image path
         print(f"Processing deployed asset: {name}, image_path: {image_path}")
         image_content = None
-        if image_path and image_path.startswith("/images/"):
-            image_content = ft.Image(
-                src=image_path,
-                width=120,
-                height=120,
-                fit=ft.ImageFit.CONTAIN,
-                error_content=ft.Text(f"Image not found: {image_path}"),
-            )
+        if image_path:
+            image_path = image_path.replace("\\", "/")
+            print(f"Normalized image_path: {image_path}")
+            if os.path.isfile(image_path):
+                image_content = ft.Image(
+                    src=image_path,
+                    width=120,
+                    height=120,
+                    fit=ft.ImageFit.CONTAIN,
+                    error_content=ft.Icon(ft.icons.IMAGE_NOT_SUPPORTED, size=60, color=ft.colors.GREY_400),
+                )
+                print(f"Image file found: {image_path}")
+            else:
+                print(f"Image file not found: {image_path}")
         else:
-            print(f"Invalid or missing image_path for {name}: {image_path}")
+            print(f"No image_path for {name}")
 
         card_content = [
             ft.Row(
@@ -468,14 +475,14 @@ class AssetPagee(ft.Container):
             )
             # Refresh available assets
             mycur = mydb.cursor()
-            mycur.execute("SELECT id, name, category, company, model, status, image_path FROM assets")
+            mycur.execute("SELECT id, name, category, company, model, status, image_path FROM consumables")
             self.asset_data = mycur.fetchall()
             print(f"Refreshed assets: {len(self.asset_data)} rows")
             mycur.close()
 
             # Refresh deployed assets
             mycur = mydb.cursor()
-            mycur.execute("SELECT id, name, category, company, model, deployed_to, user_department, deploy_date, image_path FROM deployed_assets")
+            mycur.execute("SELECT id, name, category, company, model, deployed_to, user_department, deploy_date, image_path FROM deplyed_consumables")
             self.deployed_data = mycur.fetchall()
             print(f"Refreshed deployed_assets: {len(self.deployed_data)} rows")
             mycur.close()
@@ -522,5 +529,5 @@ class AssetPagee(ft.Container):
     def show_manage_asset_bottomsheet(self):
         self.page.show_bottom_sheet(self.manage_Asset)
 
-def asset_page(page):
-    return AssetPagee(page)
+def consumable_page(page):
+    return Consumables(page)

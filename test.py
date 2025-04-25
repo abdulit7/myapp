@@ -1,66 +1,55 @@
-import flet as ft
-import random
-import asyncio
+import os
+os.environ["FLET_SECRET_KEY"] = "mysecret123"  # This must be before importing flet
 
-def main(page: ft.Page):
-    # Define the Stack dimensions
-    stack_width = 300  # Assumed width for the Stack
-    stack_height = 250  # Height of the Stack
-    container_size = 50  # Width and height of each container
+from flet import *
+from time import sleep
 
-    # Initial positions of the containers
-    c1 = ft.Container(
-        width=container_size,
-        height=container_size,
-        bgcolor="red",
-        top=0,
-        left=0,
-        animate_position=1000  # Animation duration in milliseconds
-    )
+def main(page: Page):
+    listfile = Ref[Column]()
+    progressbar = ProgressBar(width=page.window.width, value=0, visible=False)
 
-    c2 = ft.Container(
-        width=container_size,
-        height=container_size,
-        bgcolor="green",
-        top=60,
-        left=0,
-        animate_position=500
-    )
+    def res_picker(e: FilePickerResultEvent):
+        print(e.files[0].path)
+        listfile.current.controls.append(
+            Row([Text(e.files[0].name)])
+        )
+        page.update()
 
-    c3 = ft.Container(
-        width=container_size,
-        height=container_size,
-        bgcolor="blue",
-        top=120,
-        left=0,
-        animate_position=1000
-    )
+    def on_upload_progress(e: FilePickerUploadEvent):
+        progressbar.visible = True
+        progressbar.value = e.progress
+        sleep(0.1)
+        if e.progress == 1:
+            progressbar.visible = False
+        page.update()
 
-    # Add the containers to the page
+    def btn_upload(e):
+        files = []
+        for f in filepicker.result.files:
+            files.append(
+                FilePickerUploadFile(
+                    name=f.name,
+                    upload_url=page.get_upload_url(f.name, 60)
+                )
+            )
+        filepicker.upload(files)
+
+    filepicker = FilePicker(on_result=res_picker, on_upload=on_upload_progress)
+    page.overlay.append(filepicker)
+
     page.add(
-        ft.Stack([c1, c2, c3], width=stack_width, height=stack_height)
+        Column([
+            Text("Hello, Flet!"),
+            ElevatedButton("Select your files", on_click=lambda _: filepicker.pick_files()),
+            Column(ref=listfile),
+            progressbar,
+            ElevatedButton("Upload", on_click=btn_upload)
+        ])
     )
 
-    # Function to move containers to random positions
-    async def move_containers():
-        max_top = stack_height - container_size  # 250 - 50 = 200
-        max_left = stack_width - container_size  # 300 - 50 = 250
-
-        while True:
-            # Assign random positions to each container
-            c1.top = random.randint(0, max_top)
-            c1.left = random.randint(0, max_left)
-
-            c2.top = random.randint(0, max_top)
-            c2.left = random.randint(0, max_left)
-
-            c3.top = random.randint(0, max_top)
-            c3.left = random.randint(0, max_left)
-
-            page.update()
-            await asyncio.sleep(1)  # Wait 2 seconds before moving again
-
-    # Start the automatic movement
-    page.run_task(move_containers)
-
-ft.app(main)
+app(
+    target=main,
+    view=AppView.WEB_BROWSER,
+    port=5050,
+    upload_dir="assets/images"
+)

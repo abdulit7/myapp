@@ -11,6 +11,8 @@ from components.assetdialog import AssetDialog
 from pages.dashboard.department import Department
 from nav.sidebar import TopBar  # Import the updated TopBar without sidebar toggle
 from components.componentform import ComponentFormPage
+from pages.dashboard.consumable import consumable_page
+import os
 
 def main(page: ft.Page):
     page.title = "Asset Management System"
@@ -19,8 +21,6 @@ def main(page: ft.Page):
     page.padding = 0
     page.bgcolor = ft.colors.BLUE_GREY_50
     appbar_text_ref = ft.Ref[ft.Text]()
-
-    
 
     # Determine content area padding based on screen size
     def get_content_padding():
@@ -54,6 +54,7 @@ def main(page: ft.Page):
             "/componentform": ComponentFormPage,
             "/department": Department,
             "/assetformdialog": AssetDialog,
+            "/consumable": consumable_page,
             "/login": lambda page: ft.Container(
                 content=ft.Column([
                     ft.Text("Login", size=24, weight=ft.FontWeight.BOLD),
@@ -111,7 +112,6 @@ def main(page: ft.Page):
             controls=[
                 ft.Column(
                     controls=[
-                        
                         top_bar,  # Fixed TopBar
                         content_area,  # Scrollable content area
                     ],
@@ -128,9 +128,50 @@ def main(page: ft.Page):
     page.on_resize = on_resize
     page.on_route_change = change_route
     page.on_view_pop = view_pop
-    page.go("/dashboard")
+    page.go("/assetform")
 
-ft.app(target=main, assets_dir="assets", view=ft.AppView.FLET_APP, route_url_strategy="hash")
+#Run in web browser mode with upload_dir set
+# ft.app(
+#     target=main,
+#     assets_dir="assets",
+#     upload_dir="assets/images",  # Enable upload storage
+#     view=ft.AppView.WEB_BROWSER,
+#     route_url_strategy="hash",
+# )
+
+port = int(os.getenv("PORT", "8080"))
+ft.app(
+    target=main,
+    assets_dir="assets",
+    upload_dir="assets/images",  # Enable upload storage
+    view=ft.AppView.WEB_BROWSER,
+    route_url_strategy="hash",
+    port=port,
+    host="200.200.200.23",
+)
+# port = int(os.getenv("PORT", "8080"))
+# ft.app(
+#     target=main,
+#     assets_dir="assets",
+#     upload_dir="assets/images",
+#     view=ft.WEB_BROWSER,
+#     port=port,
+#     host="0.0.0.0",
+#     route_url_strategy="hash",
+#     upload_max_size=50 * 1024 * 1024,  # 50MB limit
+# )
+
+# port = int(os.getenv("PORT", "8080"))
+# ft.app(
+#     target=main,
+#     assets_dir="assets",
+#     upload_dir="assets/images",  # Ensure uploads go to assets/images/                   # For Docker 22/04/2025
+#     view=ft.WEB_BROWSER,  # Explicitly set to web mode for Docker
+#     port=port,
+#     host="0.0.0.0",
+#     route_url_strategy="hash",
+# )
+
 
 # import flet as ft
 # from pages.dashboard.home import Home

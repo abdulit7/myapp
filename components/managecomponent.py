@@ -4,22 +4,22 @@ import mysql.connector
 import asyncio
 import datetime
 
-class ManageAssetDialog:
+class ManageComponentDialog:
     def __init__(self, page: ft.Page, parent):
         self.page = page
         self.parent = parent
-        self.asset_id = None
-        self.asset_name = ""
+        self.component_id = None
+        self.component_name = ""
+        self.initial_status = None  # To track the component's current status
         self.snackbar_container = None
 
         # Form Fields
-        self.name_field = CustomTextField(label="Asset Name", disabled=True)
+        self.name_field = CustomTextField(label="Component Name", disabled=True)
         self.status = ft.Dropdown(
             label="Status",
             options=[
                 ft.dropdown.Option("Available"),
                 ft.dropdown.Option("Deployed"),
-                ft.dropdown.Option("Scrap"),
             ],
             on_change=self.status_changed,
             expand=True,
@@ -64,7 +64,7 @@ class ManageAssetDialog:
         # Form inside dialog
         self.dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Manage Asset"),
+            title=ft.Text("Manage Component"),
             content=ft.Column(
                 controls=[
                     self.name_field,
@@ -131,8 +131,8 @@ class ManageAssetDialog:
         self.page.update()
 
     async def save_button_clicked(self, e):
-        if not self.asset_id:
-            await self.show_snackbar("No asset selected!", ft.colors.RED_400)
+        if not self.component_id:
+            await self.show_snackbar("No component selected!", ft.colors.RED_400)
             return
 
         status = self.status.value
@@ -150,19 +150,27 @@ class ManageAssetDialog:
             )
             cursor = conn.cursor()
 
+            if status == self.initial_status:
+                # No status change, just close the dialog
+                await self.show_snackbar("No changes made.", ft.colors.BLUE_400)
+                self.dialog.open = False
+                self.page.update()
+                return
+
             if status == "Deployed":
-                # Fetch asset details
+                # Fetch component details from component table
                 cursor.execute(
                     """
-                    SELECT name, category, company, model, serial_no, purchaser, location, price, warranty,
-                           bill_copy, purchase_date, image_path
-                    FROM assets WHERE id = %s
+                    SELECT name, category, company, model, serial_no, purchaser, location, warranty,
+                           category_id, price, status, purchase_date, image_path, model_no, min_qty,
+                           total_qty, remaining_qty, location_id, purchase_cost
+                    FROM component WHERE id = %s
                     """,
-                    (self.asset_id,)
+                    (self.component_id,)
                 )
-                asset = cursor.fetchone()
-                if not asset:
-                    await self.show_snackbar("Asset not found!", ft.colors.RED_400)
+                component = cursor.fetchone()
+                if not component:
+                    await self.show_snackbar("Component not found!", ft.colors.RED_400)
                     conn.close()
                     return
 
@@ -176,30 +184,63 @@ class ManageAssetDialog:
                     result = cursor.fetchone()
                     user_department = result[0] if result and result[0] else ""
 
-                # Insert into deployed_assets
+                # Insert into deployed_components
                 cursor.execute(
                     """
-                    INSERT INTO deployed_assets (
-                        name, category, company, model, serial_no, purchaser, location, price, warranty,
-                        bill_copy, purchase_date, image_path, deployed_to, user_department, deploy_date
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO deployed_components (
+                        name, category, company, model, serial_no, purchaser, location, warranty,
+                        category_id, price, status, purchase_date, image_path, model_no, min_qty,
+                        total_qty, remaining_qty, location_id, purchase_cost, deployed_to,
+                        user_department, deploy_date
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
-                        asset[0], asset[1], asset[2], asset[3], asset[4], asset[5], asset[6], asset[7],
-                        asset[8], asset[9], asset[10], asset[11],
+                        component[0], component[1], component[2], component[3], component[4],
+                        component[5], component[6], component[7], component[8], component[9],
+                        "Deployed", component[11], component[12], component[13], component[14],
+                        component[15], component[16], component[17], component[18],
                         self.deploy_target.value,
                         self.deploy_target.value if self.deploy_to.value == "Department" else user_department,
                         datetime.datetime.now().strftime("%Y-%m-%d")
                     )
                 )
-                # Delete from assets
-                cursor.execute("DELETE FROM assets WHERE id = %s", (self.asset_id,))
+                # Delete from component
+                cursor.execute("DELETE FROM component WHERE id = %s", (self.component_id,))
 
-            elif status == "Scrap":
-                cursor.execute("UPDATE assets SET status = %s WHERE id = %s", (status, self.asset_id))
-
-            else:  # Available
-                cursor.execute("UPDATE assets SET status = %s WHERE id = %s", (status, self.asset_id))
+            elif status == "Available":
+                # Check if the component is currently deployed
+                cursor.execute(
+                    """
+                    SELECT name, category, company, model, serial_no, purchaser, location, warranty,
+                           category_id, price, status, purchase_date, image_path, model_no, min_qty,
+                           total_qty, remaining_qty, location_id, purchase_cost
+                    FROM deployed_components WHERE id = %s
+                    """,
+                    (self.component_id,)
+                )
+                component = cursor.fetchone()
+                if component:
+                    # Move back to component table
+                    cursor.execute(
+                        """
+                        INSERT INTO component (
+                            name, category, company, model, serial_no, purchaser, location, warranty,
+                            category_id, price, status, purchase_date, image_path, model_no, min_qty,
+                            total_qty, remaining_qty, location_id, purchase_cost
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            component[0], component[1], component[2], component[3], component[4],
+                            component[5], component[6], component[7], component[8], component[9],
+                            "Available", component[11], component[12], component[13], component[14],
+                            component[15], component[16], component[17], component[18]
+                        )
+                    )
+                    # Delete from deployed_components
+                    cursor.execute("DELETE FROM deployed_components WHERE id = %s", (self.component_id,))
+                else:
+                    # If not in deployed_components, just update the status in component
+                    cursor.execute("UPDATE component SET status = %s WHERE id = %s", (status, self.component_id))
 
             conn.commit()
             cursor.close()
@@ -210,7 +251,7 @@ class ManageAssetDialog:
 
             self.dialog.open = False
             self.page.update()
-            await self.show_snackbar("Asset updated successfully!", ft.colors.GREEN_400)
+            await self.show_snackbar("Component updated successfully!", ft.colors.GREEN_400)
 
         except mysql.connector.Error as err:
             print(f"Database error: {err}")
@@ -242,15 +283,50 @@ class ManageAssetDialog:
         print("Dialog dismissed!")
         self.page.update()
 
-    def open(self, asset_id=None, name=""):
-        self.asset_id = asset_id
-        self.asset_name = name
+    def open(self, component_id=None, name=""):
+        self.component_id = component_id
+        self.component_name = name
         self.name_field.value = name
         self.status.value = None
+        self.initial_status = None
         self.deploy_options.visible = False
         self.deploy_to.value = None
         self.deploy_target.options = []
         self.deploy_target.value = None
+
+        # Determine the initial status
+        if component_id:
+            try:
+                conn = mysql.connector.connect(
+                    host="200.200.200.23",
+                    user="root",
+                    password="Pak@123",
+                    database="itasset",
+                    auth_plugin='mysql_native_password'
+                )
+                cursor = conn.cursor()
+                # Check component table
+                cursor.execute("SELECT status FROM component WHERE id = %s", (component_id,))
+                result = cursor.fetchone()
+                if result:
+                    self.initial_status = result[0]
+                else:
+                    # Check deployed_components table
+                    cursor.execute("SELECT status FROM deployed_components WHERE id = %s", (component_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        self.initial_status = result[0]
+                cursor.close()
+                conn.close()
+
+                if self.initial_status:
+                    self.status.value = self.initial_status
+                    if self.initial_status == "Deployed":
+                        self.deploy_options.visible = True
+                        self.fetch_deploy_targets()
+            except mysql.connector.Error as err:
+                print(f"Error fetching component status: {err}")
+
         if self.snackbar_container:
             self.dialog.content.controls.remove(self.snackbar_container)
             self.snackbar_container = None

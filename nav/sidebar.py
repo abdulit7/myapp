@@ -130,6 +130,16 @@ def TopBar(page: ft.Page, height=55, bg_color="#4682B4"):
                         ),
                         on_click=lambda e: page.go("/category"),
                     ),
+
+                    ft.MenuItemButton(
+                        content=ft.Text("Consumable"),
+                        leading=ft.Icon(ft.Icons.LABEL),
+                        style=ft.ButtonStyle(
+                            bgcolor={ft.ControlState.HOVERED: ft.Colors.BLUE_100}
+                        ),
+                        on_click=lambda e: page.go("/consumable"),
+                    ),
+
                     ft.MenuItemButton(
                         content=ft.Text("Sale Force"),
                         leading=ft.Icon(ft.Icons.BUSINESS),
