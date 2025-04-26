@@ -20,6 +20,9 @@ class ManageComponentDialog:
             options=[
                 ft.dropdown.Option("Available"),
                 ft.dropdown.Option("Deployed"),
+                ft.dropdown.Option("Scrap"),
+                ft.dropdown.Option("Dispose"),
+                ft.dropdown.Option("Sold"),
             ],
             on_change=self.status_changed,
             expand=True,
@@ -36,12 +39,64 @@ class ManageComponentDialog:
             on_change=self.deploy_to_changed,
             expand=True
         )
+        self.department_dropdown = ft.Dropdown(
+            label="Select Department",
+            options=[],
+            on_change=self.department_changed,
+            expand=True,
+            visible=False
+        )
         self.deploy_target = ft.Dropdown(
-            label="Select User",
+            label="Select Target",
             options=[],
             expand=True
         )
-        self.deploy_options.controls.extend([self.deploy_to, self.deploy_target])
+        self.deploy_options.controls.extend([self.deploy_to, self.department_dropdown, self.deploy_target])
+
+        # Disposal Fields (for Scrap, Dispose, and Sold)
+        self.disposal_options = ft.Column(visible=False, expand=True)
+        # Scrap Fields
+        self.scrap_amount_field = CustomTextField(
+            label="Amount Earned from Scrap",
+            hint_text="Enter amount (e.g., 500.00)",
+            visible=False
+        )
+        # Dispose Fields
+        self.dispose_reason_field = CustomTextField(
+            label="Reason for Disposal",
+            hint_text="Enter reason for disposal",
+            visible=False
+        )
+        self.dispose_location_field = CustomTextField(
+            label="Disposal Location",
+            hint_text="Enter location where component is kept",
+            visible=False
+        )
+        # Sold Fields
+        self.sold_to_field = CustomTextField(
+            label="Sold To",
+            hint_text="Enter person to whom component was sold",
+            visible=False
+        )
+        self.sale_details_field = CustomTextField(
+            label="Sale Details",
+            hint_text="Enter details of the sale",
+            visible=False
+        )
+        self.sold_amount_field = CustomTextField(
+            label="Amount Received from Sale",
+            hint_text="Enter amount (e.g., 1000.00)",
+            visible=False
+        )
+
+        self.disposal_options.controls.extend([
+            self.scrap_amount_field,
+            self.dispose_reason_field,
+            self.dispose_location_field,
+            self.sold_to_field,
+            self.sale_details_field,
+            self.sold_amount_field,
+        ])
 
         # Save and Cancel Buttons
         self.save_button = ft.ElevatedButton(
@@ -70,6 +125,7 @@ class ManageComponentDialog:
                     self.name_field,
                     self.status,
                     self.deploy_options,
+                    self.disposal_options,
                     ft.Row(
                         controls=[self.save_button, self.cancel_button],
                         alignment=ft.MainAxisAlignment.END,
@@ -90,19 +146,120 @@ class ManageComponentDialog:
         self.page.update()
 
     def status_changed(self, e):
+        # Reset visibility of all disposal fields
+        self.scrap_amount_field.visible = False
+        self.dispose_reason_field.visible = False
+        self.dispose_location_field.visible = False
+        self.sold_to_field.visible = False
+        self.sale_details_field.visible = False
+        self.sold_amount_field.visible = False
+        self.disposal_options.visible = False
+
         if e.control.value == "Deployed":
             self.deploy_options.visible = True
-            self.fetch_deploy_targets()
+            self.disposal_options.visible = False
+            self.fetch_departments()
+        elif e.control.value == "Scrap":
+            self.deploy_options.visible = False
+            self.disposal_options.visible = True
+            self.scrap_amount_field.visible = True
+            self.department_dropdown.visible = False
+            self.deploy_target.options = []
+            self.deploy_target.value = None
+        elif e.control.value == "Dispose":
+            self.deploy_options.visible = False
+            self.disposal_options.visible = True
+            self.dispose_reason_field.visible = True
+            self.dispose_location_field.visible = True
+            self.department_dropdown.visible = False
+            self.deploy_target.options = []
+            self.deploy_target.value = None
+        elif e.control.value == "Sold":
+            self.deploy_options.visible = False
+            self.disposal_options.visible = True
+            self.sold_to_field.visible = True
+            self.sale_details_field.visible = True
+            self.sold_amount_field.visible = True
+            self.department_dropdown.visible = False
+            self.deploy_target.options = []
+            self.deploy_target.value = None
         else:
             self.deploy_options.visible = False
+            self.disposal_options.visible = False
+            self.department_dropdown.visible = False
+            self.deploy_target.options = []
+            self.deploy_target.value = None
         self.page.update()
 
     def deploy_to_changed(self, e):
+        self.department_dropdown.value = None
+        self.deploy_target.value = None
         if e.control.value == "User":
+            self.department_dropdown.visible = True
             self.deploy_target.label = "Select User"
+            self.fetch_departments()
         elif e.control.value == "Department":
+            self.department_dropdown.visible = False
             self.deploy_target.label = "Select Department"
-        self.fetch_deploy_targets()
+            self.fetch_deploy_targets()
+        self.page.update()
+
+    def department_changed(self, e):
+        if self.deploy_to.value == "User" and e.control.value:
+            self.fetch_users_by_department(e.control.value)
+        self.page.update()
+
+    def fetch_departments(self):
+        try:
+            conn = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM department ORDER BY name")
+            options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
+            self.department_dropdown.options = options if options else [ft.dropdown.Option("No departments available")]
+            self.department_dropdown.value = None
+            self.deploy_target.options = []
+            self.deploy_target.value = None
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            print(f"Error fetching departments: {err}")
+            self.department_dropdown.options = [ft.dropdown.Option("Error loading departments")]
+        self.page.update()
+
+    def fetch_users_by_department(self, department_name):
+        try:
+            conn = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT u.user_id 
+                FROM users u 
+                JOIN department d ON u.department_id = d.id 
+                WHERE d.name = %s 
+                ORDER BY u.user_id
+                """,
+                (department_name,)
+            )
+            options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
+            self.deploy_target.options = options if options else [ft.dropdown.Option("No users in this department")]
+            self.deploy_target.value = None
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            print(f"Error fetching users: {err}")
+            self.deploy_target.options = [ft.dropdown.Option("Error loading users")]
         self.page.update()
 
     def fetch_deploy_targets(self):
@@ -115,19 +272,15 @@ class ManageComponentDialog:
                 auth_plugin='mysql_native_password'
             )
             cursor = conn.cursor()
-            if self.deploy_to.value == "User":
-                cursor.execute("SELECT user_id FROM users ORDER BY user_id")
-                options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
-            else:  # Department
-                cursor.execute("SELECT name FROM department ORDER BY name")
-                options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
-            self.deploy_target.options = options if options else [ft.dropdown.Option("No options available")]
+            cursor.execute("SELECT name FROM department ORDER BY name")
+            options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
+            self.deploy_target.options = options if options else [ft.dropdown.Option("No departments available")]
             self.deploy_target.value = None
             cursor.close()
             conn.close()
         except mysql.connector.Error as err:
-            print(f"Error fetching deploy targets: {err}")
-            self.deploy_target.options = [ft.dropdown.Option("Error loading options")]
+            print(f"Error fetching departments: {err}")
+            self.deploy_target.options = [ft.dropdown.Option("Error loading departments")]
         self.page.update()
 
     async def save_button_clicked(self, e):
@@ -136,9 +289,47 @@ class ManageComponentDialog:
             return
 
         status = self.status.value
-        if status == "Deployed" and (not self.deploy_to.value or not self.deploy_target.value):
-            await self.show_snackbar("Please select Deploy To and User/Department!", ft.colors.RED_400)
-            return
+        if status == "Deployed":
+            if not self.deploy_to.value:
+                await self.show_snackbar("Please select Deploy To!", ft.colors.RED_400)
+                return
+            if self.deploy_to.value == "User" and not self.department_dropdown.value:
+                await self.show_snackbar("Please select a Department!", ft.colors.RED_400)
+                return
+            if not self.deploy_target.value:
+                await self.show_snackbar("Please select a User or Department!", ft.colors.RED_400)
+                return
+        elif status == "Scrap":
+            if not self.scrap_amount_field.value:
+                await self.show_snackbar("Please enter the amount earned from scrap!", ft.colors.RED_400)
+                return
+            try:
+                float(self.scrap_amount_field.value)
+            except ValueError:
+                await self.show_snackbar("Amount earned must be a valid number!", ft.colors.RED_400)
+                return
+        elif status == "Dispose":
+            if not self.dispose_reason_field.value:
+                await self.show_snackbar("Please enter the reason for disposal!", ft.colors.RED_400)
+                return
+            if not self.dispose_location_field.value:
+                await self.show_snackbar("Please enter the disposal location!", ft.colors.RED_400)
+                return
+        elif status == "Sold":
+            if not self.sold_to_field.value:
+                await self.show_snackbar("Please enter the person to whom the component was sold!", ft.colors.RED_400)
+                return
+            if not self.sale_details_field.value:
+                await self.show_snackbar("Please enter the sale details!", ft.colors.RED_400)
+                return
+            if not self.sold_amount_field.value:
+                await self.show_snackbar("Please enter the amount received from the sale!", ft.colors.RED_400)
+                return
+            try:
+                float(self.sold_amount_field.value)
+            except ValueError:
+                await self.show_snackbar("Amount received must be a valid number!", ft.colors.RED_400)
+                return
 
         try:
             conn = mysql.connector.connect(
@@ -150,31 +341,25 @@ class ManageComponentDialog:
             )
             cursor = conn.cursor()
 
-            if status == self.initial_status:
-                # No status change, just close the dialog
-                await self.show_snackbar("No changes made.", ft.colors.BLUE_400)
-                self.dialog.open = False
-                self.page.update()
+            # Determine the source table based on initial status
+            source_table = "component" if self.initial_status == "Available" else "deployed_components"
+            cursor.execute(
+                """
+                SELECT name, category, company, model, serial_no, purchaser, location, warranty,
+                       category_id, price, status, purchase_date, image_path, model_no, min_qty,
+                       total_qty, remaining_qty, location_id, purchase_cost
+                FROM {} WHERE id = %s
+                """.format(source_table),
+                (self.component_id,)
+            )
+            component = cursor.fetchone()
+            if not component:
+                await self.show_snackbar("Component not found!", ft.colors.RED_400)
+                conn.close()
                 return
 
             if status == "Deployed":
-                # Fetch component details from component table
-                cursor.execute(
-                    """
-                    SELECT name, category, company, model, serial_no, purchaser, location, warranty,
-                           category_id, price, status, purchase_date, image_path, model_no, min_qty,
-                           total_qty, remaining_qty, location_id, purchase_cost
-                    FROM component WHERE id = %s
-                    """,
-                    (self.component_id,)
-                )
-                component = cursor.fetchone()
-                if not component:
-                    await self.show_snackbar("Component not found!", ft.colors.RED_400)
-                    conn.close()
-                    return
-
-                # Get user_department for users
+                # Insert into deployed_components
                 user_department = ""
                 if self.deploy_to.value == "User":
                     cursor.execute(
@@ -184,7 +369,6 @@ class ManageComponentDialog:
                     result = cursor.fetchone()
                     user_department = result[0] if result and result[0] else ""
 
-                # Insert into deployed_components
                 cursor.execute(
                     """
                     INSERT INTO deployed_components (
@@ -204,23 +388,58 @@ class ManageComponentDialog:
                         datetime.datetime.now().strftime("%Y-%m-%d")
                     )
                 )
-                # Delete from component
-                cursor.execute("DELETE FROM component WHERE id = %s", (self.component_id,))
+                # Delete from source table
+                cursor.execute(f"DELETE FROM {source_table} WHERE id = %s", (self.component_id,))
 
-            elif status == "Available":
-                # Check if the component is currently deployed
+            elif status in ["Scrap", "Dispose", "Sold"]:
+                # Prepare data for disposed_components
+                disposal_type = status
+                amount_earned = None
+                disposal_reason = None
+                disposal_location = None
+                sold_to = None
+                sale_details = None
+
+                if status == "Scrap":
+                    amount_earned = float(self.scrap_amount_field.value)
+                elif status == "Dispose":
+                    disposal_reason = self.dispose_reason_field.value
+                    disposal_location = self.dispose_location_field.value
+                elif status == "Sold":
+                    sold_to = self.sold_to_field.value
+                    sale_details = self.sale_details_field.value
+                    amount_earned = float(self.sold_amount_field.value)
+
+                # Insert into disposed_components
                 cursor.execute(
                     """
-                    SELECT name, category, company, model, serial_no, purchaser, location, warranty,
-                           category_id, price, status, purchase_date, image_path, model_no, min_qty,
-                           total_qty, remaining_qty, location_id, purchase_cost
-                    FROM deployed_components WHERE id = %s
+                    INSERT INTO disposed_components (
+                        name, category, company, model, serial_no, purchaser, location, warranty,
+                        category_id, price, purchase_date, image_path, model_no, min_qty,
+                        total_qty, remaining_qty, location_id, purchase_cost, disposal_type,
+                        disposal_date, amount_earned, disposal_reason, disposal_location,
+                        sale_details, sold_to
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (self.component_id,)
+                    (
+                        component[0], component[1], component[2], component[3], component[4],
+                        component[5], component[6], component[7], component[8], component[9],
+                        component[11], component[12], component[13], component[14],
+                        component[15], component[16], component[17], component[18],
+                        disposal_type,
+                        datetime.datetime.now().strftime("%Y-%m-%d"),
+                        amount_earned,
+                        disposal_reason,
+                        disposal_location,
+                        sale_details,
+                        sold_to,
+                    )
                 )
-                component = cursor.fetchone()
-                if component:
-                    # Move back to component table
+                # Delete from source table
+                cursor.execute(f"DELETE FROM {source_table} WHERE id = %s", (self.component_id,))
+
+            else:  # Available
+                if self.initial_status == "Deployed":
                     cursor.execute(
                         """
                         INSERT INTO component (
@@ -236,11 +455,9 @@ class ManageComponentDialog:
                             component[15], component[16], component[17], component[18]
                         )
                     )
-                    # Delete from deployed_components
                     cursor.execute("DELETE FROM deployed_components WHERE id = %s", (self.component_id,))
                 else:
-                    # If not in deployed_components, just update the status in component
-                    cursor.execute("UPDATE component SET status = %s WHERE id = %s", (status, self.component_id))
+                    cursor.execute("UPDATE component SET status = %s WHERE id = %s", ("Available", self.component_id))
 
             conn.commit()
             cursor.close()
@@ -256,6 +473,9 @@ class ManageComponentDialog:
         except mysql.connector.Error as err:
             print(f"Database error: {err}")
             await self.show_snackbar(f"Database error: {err}", ft.colors.RED_400)
+        except ValueError as ve:
+            print(f"Value error: {ve}")
+            await self.show_snackbar(f"Value error: {ve}", ft.colors.RED_400)
 
     async def show_snackbar(self, message, color):
         if self.snackbar_container:
@@ -290,9 +510,25 @@ class ManageComponentDialog:
         self.status.value = None
         self.initial_status = None
         self.deploy_options.visible = False
+        self.disposal_options.visible = False
         self.deploy_to.value = None
+        self.department_dropdown.options = []
+        self.department_dropdown.value = None
+        self.department_dropdown.visible = False
         self.deploy_target.options = []
         self.deploy_target.value = None
+        self.scrap_amount_field.value = ""
+        self.dispose_reason_field.value = ""
+        self.dispose_location_field.value = ""
+        self.sold_to_field.value = ""
+        self.sale_details_field.value = ""
+        self.sold_amount_field.value = ""
+        self.scrap_amount_field.visible = False
+        self.dispose_reason_field.visible = False
+        self.dispose_location_field.visible = False
+        self.sold_to_field.visible = False
+        self.sale_details_field.visible = False
+        self.sold_amount_field.visible = False
 
         # Determine the initial status
         if component_id:
@@ -323,7 +559,7 @@ class ManageComponentDialog:
                     self.status.value = self.initial_status
                     if self.initial_status == "Deployed":
                         self.deploy_options.visible = True
-                        self.fetch_deploy_targets()
+                        self.fetch_departments()
             except mysql.connector.Error as err:
                 print(f"Error fetching component status: {err}")
 

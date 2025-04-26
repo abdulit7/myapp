@@ -1,122 +1,122 @@
+import os
+os.environ["FLET_SECRET_KEY"] = "mysecret123"  # This must be before importing flet
 import flet as ft
 import mysql.connector
-import random
-import asyncio
 import datetime
-import os
 import re
+from typing import Dict, List, Optional
 
 from components.fields import CustomTextField
 
 class ComponentForm(ft.Container):
     def __init__(self, page: ft.Page):
         super().__init__()
-
-        page.window.title = "Asset Management System - Add Component"
         self.page = page
         self.expand = True
+        self.selected_image = None  # Store the selected image file
+        self.image_path = None  # Store the path after upload
 
-        self.stack_width = 300
-        self.stack_height = 250
-        self.container_size = 50
-
-        # Decorative stack for UI
-        self.c1 = ft.Container(
-            width=self.container_size,
-            height=self.container_size,
-            bgcolor="red",
-            top=0,
-            left=0
+        # Initialize file pickers
+        self.image_picker = ft.FilePicker(
+            on_result=self._handle_image_picker_result,
+            on_upload=self._handle_image_upload
         )
+        self.page.overlay.append(self.image_picker)
 
-        self.c2 = ft.Container(
-            width=self.container_size,
-            height=self.container_size,
-            bgcolor="green",
-            top=60,
-            left=0
-        )
+        # Build the UI
+        self._setup_page()
+        self._initialize_components()
+        self._build_ui()
 
-        self.c3 = ft.Container(
-            width=self.container_size,
-            height=self.container_size,
-            bgcolor="blue",
-            top=120,
-            left=0
-        )
+    def _setup_page(self) -> None:
+        """Set up the page properties."""
+        self.page.window.title = "Asset Management System"
 
-        # File picker for image and bill copy upload
-        self.file_picker = ft.FilePicker(on_result=self.file_picker_result)
-        page.overlay.append(self.file_picker)
-
-        # Date pickers
+    def _initialize_components(self) -> None:
+        """Initialize all UI components and overlays."""
+        # File and Date Pickers
+        self.file_picker = ft.FilePicker(on_result=self._handle_file_picker_result)
         self.date_picker = ft.DatePicker(
-            on_change=self.date_picker_result,
-            on_dismiss=self.date_picker_dismiss,
+            on_change=self._handle_date_picker_result,
+            on_dismiss=self._handle_date_picker_dismiss,
             first_date=datetime.datetime(2000, 1, 1),
             last_date=datetime.datetime.now()
         )
-        page.overlay.append(self.date_picker)
-
         self.deploy_date_picker = ft.DatePicker(
-            on_change=self.deploy_date_picker_result,
+            on_change=self._handle_deploy_date_picker_result,
             first_date=datetime.datetime(2000, 1, 1),
             last_date=datetime.datetime.now()
         )
-        page.overlay.append(self.deploy_date_picker)
+        self.page.overlay.extend([self.file_picker, self.date_picker, self.deploy_date_picker])
 
-        # Form fields (matching AssetForm, without min_qty and remaining_qty)
-        category_options = [
-            ft.dropdown.Option("Desktop"),
-            ft.dropdown.Option("Wyse"),
-            ft.dropdown.Option("Keyboard"),
-            ft.dropdown.Option("LCD"),
-        ]
+        # Fetch categories and locations for dropdowns
+        self.categories = self._fetch_categories()
+        self.locations = self._fetch_locations()
 
-        self.name_field = CustomTextField(label="Component Name")
+        # Form Fields
+        self.name_field = CustomTextField(label="Name")
         self.category_field = ft.Dropdown(
             label="Category",
-            options=category_options,
+            options=[
+                ft.dropdown.Option(key=str(cat[0]), text=cat[1])
+                for cat in self.categories
+            ],
             hint_text="Select Category",
         )
         self.company_field = CustomTextField(label="Company")
         self.model_field = CustomTextField(label="Model")
         self.serial_no_field = CustomTextField(label="Serial No")
         self.purchaser_field = CustomTextField(label="Purchaser")
-        self.location_field = CustomTextField(label="Location")
+        self.location_field = ft.Dropdown(
+            label="Location",
+            options=[
+                ft.dropdown.Option(key=str(loc[0]), text=loc[1])
+                for loc in self.locations
+            ],
+            hint_text="Select Location",
+        )
+        self.warranty_field = CustomTextField(label="Warranty")
+        self.price_field = CustomTextField(label="Price")
+        self.model_no_field = CustomTextField(label="Model No")
+        self.min_qty_field = CustomTextField(label="Minimum Quantity")
+        self.total_qty_field = CustomTextField(label="Total Quantity")
+
+        # File Upload Fields
         self.bill_copy_field = ft.ElevatedButton(
             icon=ft.icons.FILE_UPLOAD,
-            text="Upload Bill Copy",
-            on_click=lambda e: setattr(self, 'last_picker_button', "bill_copy") or self.file_picker.pick_files()
+            text="Select Bill Copy",
+            on_click=lambda e: self._set_picker_button("bill_copy")
         )
         self.bill_copy_display = ft.Text("No file selected")
+
+        # Image Selection Field
         self.image_field = ft.ElevatedButton(
             icon=ft.icons.IMAGE,
-            text="Upload Component Image",
-            on_click=lambda e: setattr(self, 'last_picker_button', "image") or self.file_picker.pick_files()
+            text="Select Component Image",
+            on_click=lambda e: self.image_picker.pick_files()
         )
-        self.image_display = ft.Image(
-            src=None,
-            width=100,
-            height=100,
-            fit=ft.ImageFit.CONTAIN,
-            visible=False,
-            error_content=ft.Text("No image selected")
-        )
+        self.image_display = ft.Text("No image selected")
+
+        # Date Fields
         self.purchase_date_text = ft.Text("No date selected")
         self.purchase_date_button = ft.ElevatedButton(
             icon=ft.icons.CALENDAR_MONTH,
             text="Select Purchase Date",
-            on_click=lambda e: self.show_date_picker()
+            on_click=lambda e: self._show_date_picker()
         )
-        self.warranty_field = CustomTextField(label="Warranty")
-        self.price_field = CustomTextField(label="Price")
-        self.total_qty_field = CustomTextField(label="Total Quantity")
+        self.deploy_date_text = ft.Text("No deploy date selected")
+        self.deploy_date_button = ft.ElevatedButton(
+            icon=ft.icons.CALENDAR_MONTH,
+            text="Select Deploy Date",
+            on_click=lambda e: self._show_deploy_date_picker()
+        )
+
+        # Status Field
         self.status_field = ft.Dropdown(
             label="Status",
             options=[
-                ft.dropdown.Option("Available"),
-                ft.dropdown.Option("Deployed"),
+                ft.dropdown.Option(key="Available", text="Available"),
+                ft.dropdown.Option(key="Deployed", text="Deployed"),
             ],
             value="Available",
         )
@@ -130,47 +130,65 @@ class ComponentForm(ft.Container):
             expand=True,
         )
 
-        # Deployment fields
+        # Deployment Fields
         self.deployed_to_field = CustomTextField(label="Deployed To (User or Department)")
         self.user_department_field = CustomTextField(label="User Department")
-        self.deploy_date_text = ft.Text("No deploy date selected")
-        self.deploy_date_button = ft.ElevatedButton(
-            icon=ft.icons.CALENDAR_MONTH,
-            text="Select Deploy Date",
-            on_click=lambda e: self.show_deploy_date_picker()
-        )
-
         self.deployment_dialog = ft.AlertDialog(
             title=ft.Text("Deployment Details"),
             content=ft.Column([
                 self.deployed_to_field,
                 self.user_department_field,
-                self.build_form_row("Deploy Date", self.deploy_date_button),
+                self._build_form_row("Deploy Date", self.deploy_date_button),
                 self.deploy_date_text,
             ], spacing=10),
             actions=[
-                ft.TextButton("Save", on_click=self.save_deployment),
-                ft.TextButton("Cancel", on_click=self.cancel_deployment),
+                ft.TextButton("Save", on_click=self._save_deployment),
+                ft.TextButton("Cancel", on_click=self._cancel_deployment),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
 
-        # Form layout
+    def _fetch_categories(self) -> List[tuple]:
+        """Fetch categories from the database for the dropdown."""
+        try:
+            connection = self._get_db_connection()
+            if not connection:
+                return []
+            cur = connection.cursor()
+            cur.execute("SELECT id, name FROM category")
+            categories = cur.fetchall()
+            cur.close()
+            connection.close()
+            return categories
+        except mysql.connector.Error as error:
+            print(f"Error fetching categories: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error fetching categories: {error}"), duration=4000))
+            return []
+
+    def _fetch_locations(self) -> List[tuple]:
+        """Fetch locations from the database for the dropdown."""
+        try:
+            connection = self._get_db_connection()
+            if not connection:
+                return []
+            cur = connection.cursor()
+            cur.execute("SELECT id, name FROM location")
+            locations = cur.fetchall()
+            cur.close()
+            connection.close()
+            return locations
+        except mysql.connector.Error as error:
+            print(f"Error fetching locations: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error fetching locations: {error}"), duration=4000))
+            return []
+
+    def _build_ui(self) -> None:
+        """Build the main UI layout."""
         self.content = ft.ResponsiveRow(
             controls=[
                 ft.Container(
-                    width=250,
-                    col={"sm": 12, "md": 3},
-                    content=ft.Column(
-                        controls=[
-                            ft.Stack([self.c1, self.c2, self.c3], width=self.stack_width, height=self.stack_height)
-                        ],
-                        spacing=20
-                    )
-                ),
-                ft.Container(
                     expand=True,
-                    col={"sm": 12, "md": 9},
+                    col={"sm": 12, "md": 12},
                     bgcolor=ft.colors.GREY_100,
                     padding=30,
                     content=ft.Container(
@@ -181,23 +199,25 @@ class ComponentForm(ft.Container):
                         content=ft.Column(
                             controls=[
                                 ft.Text("Component Registration", size=24, weight=ft.FontWeight.BOLD, color=ft.colors.BLUE_900),
-                                self.build_form_row("Component Name", self.name_field),
+                                self._build_form_row("Name", self.name_field),
                                 self.category_field,
-                                self.build_form_row("Company", self.company_field),
-                                self.build_form_row("Model", self.model_field),
-                                self.build_form_row("Serial No", self.serial_no_field),
-                                self.build_form_row("Purchaser", self.purchaser_field),
-                                self.build_form_row("Location", self.location_field),
-                                self.build_form_row("Upload Bill Copy", self.bill_copy_field),
+                                self._build_form_row("Company", self.company_field),
+                                self._build_form_row("Model", self.model_field),
+                                self._build_form_row("Serial No", self.serial_no_field),
+                                self._build_form_row("Purchaser", self.purchaser_field),
+                                self.location_field,
+                                self._build_form_row("Select Bill Copy", self.bill_copy_field),
                                 self.bill_copy_display,
-                                self.build_form_row("Upload Component Image", self.image_field),
+                                self._build_form_row("Select Component Image", self.image_field),
                                 self.image_display,
-                                self.build_form_row("Purchase Date", self.purchase_date_button),
+                                self._build_form_row("Purchase Date", self.purchase_date_button),
                                 self.purchase_date_text,
-                                self.build_form_row("Warranty", self.warranty_field),
-                                self.build_form_row("Price", self.price_field),
-                                self.build_form_row("Total Quantity", self.total_qty_field),
-                                self.build_form_row("Status", self.status_field_row),
+                                self._build_form_row("Warranty", self.warranty_field),
+                                self._build_form_row("Price", self.price_field),
+                                self._build_form_row("Model No", self.model_no_field),
+                                self._build_form_row("Minimum Quantity", self.min_qty_field),
+                                self._build_form_row("Total Quantity", self.total_qty_field),
+                                self._build_form_row("Status", self.status_field_row),
                                 ft.Row(
                                     controls=[
                                         ft.ElevatedButton(
@@ -205,20 +225,16 @@ class ComponentForm(ft.Container):
                                             icon=ft.icons.SAVE,
                                             bgcolor=ft.colors.GREEN_600,
                                             color=ft.colors.WHITE,
-                                            style=ft.ButtonStyle(
-                                                shape=ft.RoundedRectangleBorder(radius=10)
-                                            ),
-                                            on_click=self.save_component
+                                            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
+                                            on_click=self._save_component
                                         ),
                                         ft.ElevatedButton(
                                             "Cancel",
                                             icon=ft.icons.CANCEL,
                                             bgcolor=ft.colors.RED_600,
                                             color=ft.colors.WHITE,
-                                            style=ft.ButtonStyle(
-                                                shape=ft.RoundedRectangleBorder(radius=10)
-                                            ),
-                                            on_click=self.cancel_form
+                                            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
+                                            on_click=self._cancel_form
                                         ),
                                     ],
                                     alignment=ft.MainAxisAlignment.END,
@@ -233,7 +249,8 @@ class ComponentForm(ft.Container):
             spacing=20
         )
 
-    def build_form_row(self, label_text, input_control):
+    def _build_form_row(self, label_text: str, input_control: ft.Control) -> ft.ResponsiveRow:
+        """Create a form row with a label and input control."""
         return ft.ResponsiveRow(
             controls=[
                 ft.Container(
@@ -250,87 +267,154 @@ class ComponentForm(ft.Container):
             spacing=10,
         )
 
-    def show_date_picker(self):
+    def _set_picker_button(self, button_type: str) -> None:
+        """Set the last picker button type and trigger file picker."""
+        self.last_picker_button = button_type
+        self.file_picker.pick_files()
+
+    def _handle_image_picker_result(self, e: ft.FilePickerResultEvent) -> None:
+        """Handle the result of image picking."""
+        if not e.files:
+            return
+
+        self.selected_image = e.files[0]  # Store the selected image file
+        self.image_display.value = self.selected_image.name  # Display the file name
+        self.page.update()
+
+    def _handle_image_upload(self, e: ft.FilePickerUploadEvent) -> None:
+        """Handle the image upload completion."""
+        if e.progress == 1:  # Upload completed
+            # Use the component name and timestamp for the filename
+            component_name = self.name_field.value.replace(" ", "_") if self.name_field.value else "unnamed_component"
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_filename = f"{component_name}_{timestamp}{os.path.splitext(e.file_name)[1]}"
+            save_dir = os.path.join("assets", "images")
+            save_path = os.path.join(save_dir, save_filename).replace("\\", "/")
+            self.image_path = f"/images/{save_filename}"
+            print(f"Image uploaded and saved to: {save_path}")
+
+    def _handle_file_picker_result(self, e: ft.FilePickerResultEvent) -> None:
+        """Handle the result of file picking for bill copies."""
+        if not e.files:
+            return
+
+        file = e.files[0]
+        # Use component name and timestamp for the filename
+        component_name = self.name_field.value.replace(" ", "_") if self.name_field.value else "unnamed_component"
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        ext = os.path.splitext(file.name)[1]
+        save_filename = f"{component_name}_{timestamp}{ext}"
+
+        # Ensure the path is relative to the container's working directory
+        save_dir = os.path.join("assets", "bill_copies")
+        save_path = os.path.join(save_dir, save_filename).replace("\\", "/")
+        db_path = f"/bill_copies/{save_filename}"
+
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+            # Check if running in web mode (file.path is None)
+            if file.path is None:  # Web mode
+                if hasattr(file, 'bytes') and file.bytes:
+                    with open(save_path, "wb") as dst:
+                        dst.write(file.bytes)
+                else:
+                    self.page.open(ft.SnackBar(ft.Text("Bill copy upload in web mode requires a different approach."), duration=4000))
+                    return
+            else:  # Desktop mode
+                with open(file.path, "rb") as src, open(save_path, "wb") as dst:
+                    dst.write(src.read())
+            print(f"Saved file to: {save_path}")
+
+            self.bill_copy_display.value = db_path
+        except Exception as ex:
+            print(f"Failed to save file: {ex}")
+            self.page.open(ft.SnackBar(ft.Text(f"Failed to save file: {ex}"), duration=4000))
+            return
+
+        self.page.update()
+
+    def _save_image_to_folder(self) -> Optional[str]:
+        """Save the selected image to the folder and return the database path."""
+        if not self.selected_image:
+            return None
+
+        file = self.selected_image
+        # Use component name and timestamp for the filename
+        component_name = self.name_field.value.replace(" ", "_") if self.name_field.value else "unnamed_component"
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        ext = os.path.splitext(file.name)[1]
+        save_filename = f"{component_name}_{timestamp}{ext}"
+
+        # Ensure the path is relative to the container's working directory
+        save_dir = os.path.join("assets", "images")
+        save_path = os.path.join(save_dir, save_filename).replace("\\", "/")
+        db_path = f"/images/{save_filename}"
+
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+            if file.path:  # Desktop mode
+                with open(file.path, "rb") as src, open(save_path, "wb") as dst:
+                    dst.write(src.read())
+                print(f"Saved image to: {save_path}")
+                return db_path
+            else:  # Web mode
+                # Initiate the upload process
+                self.image_path = None  # Reset before upload
+                self.image_picker.upload([
+                    ft.FilePickerUploadFile(
+                        name=file.name,
+                        upload_url=self.page.get_upload_url(save_filename, 600)
+                    )
+                ])
+                # Wait for the upload to complete (simplified; in production, use async or callbacks)
+                timeout = 10  # seconds
+                elapsed = 0
+                while self.image_path is None and elapsed < timeout:
+                    self.page.update()
+                    elapsed += 0.1
+                    import time
+                    time.sleep(0.1)
+                if self.image_path:
+                    return self.image_path
+                else:
+                    raise TimeoutError("Image upload timed out")
+        except Exception as ex:
+            print(f"Failed to save image: {ex}")
+            self.page.open(ft.SnackBar(ft.Text(f"Failed to save image: {ex}"), duration=4000))
+            return None
+
+    def _show_date_picker(self) -> None:
+        """Show the purchase date picker."""
         self.date_picker.open = True
         self.page.update()
 
-    def show_deploy_date_picker(self):
+    def _show_deploy_date_picker(self) -> None:
+        """Show the deploy date picker."""
         self.deploy_date_picker.open = True
         self.page.update()
 
-    def file_picker_result(self, e: ft.FilePickerResultEvent):
-        if e.files:
-            file = e.files[0]
-            ext = os.path.splitext(file.name)[1]
-            if self.last_picker_button == "image":
-                # Validate component name
-                component_name = self.name_field.value.strip()
-                if not component_name:
-                    self.page.open(ft.SnackBar(ft.Text("Please enter a component name before uploading an image"), duration=4000))
-                    return
-                # Sanitize component name for filename
-                safe_name = re.sub(r'[^\w\s-]', '', component_name).replace(' ', '_')
-                if not safe_name:
-                    safe_name = "component"
-                # Generate filename with component name and timestamp
-                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                save_filename = f"{safe_name}_{timestamp}{ext}"
-                save_path = os.path.join("images", save_filename).replace("\\", "/")
-                # Ensure images/ folder exists
-                os.makedirs("images", exist_ok=True)
-                # Save the file
-                try:
-                    with open(file.path, "rb") as src, open(save_path, "wb") as dst:
-                        dst.write(src.read())
-                    print(f"Saved image to: {save_path}")
-                    self.image_display.src = save_path
-                    self.image_display.visible = True
-                except Exception as ex:
-                    print(f"Failed to save image: {ex}")
-                    self.page.open(ft.SnackBar(ft.Text(f"Failed to save image: {ex}"), duration=4000))
-                    return
-            else:
-                # Handle bill copy
-                file_name = file.name
-                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                save_filename = f"{os.path.splitext(file_name)[0]}_{timestamp}{ext}"
-                save_path = os.path.join("images", save_filename).replace("\\", "/")
-                os.makedirs("images", exist_ok=True)
-                try:
-                    with open(file.path, "rb") as src, open(save_path, "wb") as dst:
-                        dst.write(src.read())
-                    print(f"Saved bill copy to: {save_path}")
-                except Exception as ex:
-                    print(f"Failed to save bill copy: {ex}")
-                    self.page.open(ft.SnackBar(ft.Text(f"Failed to save bill copy: {ex}"), duration=4000))
-                    return
-                self.bill_copy_display.value = save_path
-            self.page.update()
-
-    def date_picker_result(self, e):
-        if e.control.value:
-            self.purchase_date_text.value = e.control.value.strftime("%Y-%m-%d")
-        else:
-            self.purchase_date_text.value = "No date selected"
+    def _handle_date_picker_result(self, e: ft.ControlEvent) -> None:
+        """Handle the result of the purchase date picker."""
+        self.purchase_date_text.value = e.control.value.strftime("%Y-%m-%d") if e.control.value else "No date selected"
         self.date_picker.open = False
         self.page.update()
 
-    def date_picker_dismiss(self, e):
+    def _handle_date_picker_dismiss(self, e: ft.ControlEvent) -> None:
+        """Handle dismissal of the purchase date picker."""
         self.purchase_date_text.value = "No date selected"
         self.date_picker.open = False
         self.page.update()
 
-    def deploy_date_picker_result(self, e):
-        if e.control.value:
-            self.deploy_date_text.value = e.control.value.strftime("%Y-%m-%d")
-        else:
-            self.deploy_date_text.value = "No deploy date selected"
+    def _handle_deploy_date_picker_result(self, e: ft.ControlEvent) -> None:
+        """Handle the result of the deploy date picker."""
+        self.deploy_date_text.value = e.control.value.strftime("%Y-%m-%d") if e.control.value else "No deploy date selected"
         self.deploy_date_picker.open = False
         self.page.update()
 
-    def validate_component_fields(self):
+    def _validate_component_fields(self) -> List[str]:
+        """Validate required component fields and return a list of empty fields."""
         required_fields = {
-            "Component Name": self.name_field.value,
+            "Name": self.name_field.value,
             "Category": self.category_field.value,
             "Company": self.company_field.value,
             "Model": self.model_field.value,
@@ -339,22 +423,38 @@ class ComponentForm(ft.Container):
             "Location": self.location_field.value,
             "Price": self.price_field.value,
             "Warranty": self.warranty_field.value,
+            "Model No": self.model_no_field.value,
+            "Minimum Quantity": self.min_qty_field.value,
             "Total Quantity": self.total_qty_field.value,
             "Status": self.status_field.value,
             "Purchase Date": self.purchase_date_text.value,
-            "Image": self.image_display.src
         }
-
-        empty_fields = [
+        return [
             field for field, value in required_fields.items()
-            if not value or value == "No date selected" or value is None
+            if not value or value == "No date selected"
         ]
 
-        return empty_fields
+    def _get_db_connection(self) -> Optional[mysql.connector.connection.MySQLConnection]:
+        """Establish and return a database connection."""
+        try:
+            connection = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            print("Database connection successful")
+            return connection
+        except mysql.connector.Error as error:
+            print(f"Database connection failed: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Database error: {error}"), duration=4000))
+            return None
 
-    def save_deployment(self, e):
+    def _save_deployment(self, e: ft.ControlEvent) -> None:
+        """Save deployment details to the database."""
         print("Entering save_deployment")
-        empty_fields = self.validate_component_fields()
+        empty_fields = self._validate_component_fields()
         if empty_fields:
             print(f"Validation failed: {empty_fields}")
             self.page.open(ft.SnackBar(ft.Text(f"Please fill all required fields: {', '.join(empty_fields)}"), duration=4000))
@@ -364,81 +464,51 @@ class ComponentForm(ft.Container):
         user_department = self.user_department_field.value
         deploy_date = self.deploy_date_text.value if self.deploy_date_text.value != "No deploy date selected" else None
 
-        if not deployed_to or not user_department or not deploy_date:
+        if not all([deployed_to, user_department, deploy_date]):
             print("Deployment fields missing")
             self.page.open(ft.SnackBar(ft.Text("Please fill all deployment details: Deployed To, User Department, Deploy Date"), duration=4000))
             return
 
-        # Validate total quantity
-        try:
-            total_qty = int(self.total_qty_field.value)
-            if total_qty < 0:
-                self.page.open(ft.SnackBar(ft.Text("Total Quantity cannot be negative"), duration=4000))
-                return
-        except ValueError as ve:
-            print(f"Quantity conversion error: {ve}")
-            self.page.open(ft.SnackBar(ft.Text("Total Quantity must be a valid number"), duration=4000))
+        # Save the image before saving to the database
+        image_path = self._save_image_to_folder()
+        if self.selected_image and not image_path:
+            return  # Stop if image saving failed
+
+        connection = self._get_db_connection()
+        if not connection:
             return
 
         try:
-            print("Connecting to database")
-            connection = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
-            )
             cur = connection.cursor()
-
-            component_data = {
-                "name": self.name_field.value,
-                "category": self.category_field.value,
-                "company": self.company_field.value,
-                "model": self.model_field.value,
-                "serial_no": self.serial_no_field.value,
-                "purchaser": self.purchaser_field.value,
-                "location": self.location_field.value,
-                "price": None,
-                "warranty": self.warranty_field.value,
-                "total_qty": total_qty,
-                "bill_copy": self.bill_copy_display.value if self.bill_copy_display.value != "No file selected" else None,
-                "purchase_date": self.purchase_date_text.value if self.purchase_date_text.value != "No date selected" else None,
-                "image_path": self.image_display.src if self.image_display.src else None,
-            }
-
-            try:
-                if self.price_field.value:
-                    component_data["price"] = float(self.price_field.value)
-            except ValueError as ve:
-                print(f"Price conversion error: {ve}")
-                self.page.open(ft.SnackBar(ft.Text("Invalid price format. Please enter a valid number."), duration=4000))
+            component_data = self._prepare_component_data()
+            if not component_data:
                 return
+
+            component_data["image_path"] = image_path
 
             print("Inserting into deployed_components")
             sql = """
                 INSERT INTO deployed_components (
-                    name, category, company, model, serial_no, purchaser, location, price, warranty,
-                    total_qty, bill_copy, purchase_date, image_path,
-                    status, deployed_to, user_department, deploy_date
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    name, category, company, model, serial_no, purchaser, location, warranty,
+                    category_id, price, purchase_date, image_path, model_no, min_qty,
+                    total_qty, remaining_qty, location_id, purchase_cost, status,
+                    deployed_to, user_department, deploy_date, bill_copy
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cur.execute(sql, (
                 component_data["name"], component_data["category"], component_data["company"], component_data["model"],
-                component_data["serial_no"], component_data["purchaser"], component_data["location"], component_data["price"],
-                component_data["warranty"], component_data["total_qty"],
-                component_data["bill_copy"], component_data["purchase_date"], component_data["image_path"],
-                "Deployed", deployed_to, user_department, deploy_date
+                component_data["serial_no"], component_data["purchaser"], component_data["location"], component_data["warranty"],
+                component_data["category_id"], component_data["price"], component_data["purchase_date"], component_data["image_path"],
+                component_data["model_no"], component_data["min_qty"], component_data["total_qty"], component_data["remaining_qty"],
+                component_data["location_id"], component_data["purchase_cost"], "Deployed",
+                deployed_to, user_department, deploy_date, component_data["bill_copy"]
             ))
 
             connection.commit()
             print("Deployed component saved successfully")
             self.page.dialog.open = False
-            self.clear_form()
-            print("Before redirect from save_deployment, current route:", self.page.route)
-            self.page.go("/components")
-            print("After redirect attempt from save_deployment, current route:", self.page.route)
-            self.page.update()
+            self._clear_form()
+            self._redirect_to_components_page("save_deployment")
 
         except mysql.connector.Error as error:
             print(f"Database error in save_deployment: {error}")
@@ -452,29 +522,20 @@ class ComponentForm(ft.Container):
                 connection.close()
                 print("Database connection closed")
 
-    def cancel_deployment(self, e):
+    def _cancel_deployment(self, e: ft.ControlEvent) -> None:
+        """Cancel the deployment dialog and reset status."""
         print("Canceling deployment dialog")
         self.page.dialog.open = False
         self.status_field.value = "Available"
         self.page.update()
 
-    def save_component(self, e):
+    def _save_component(self, e: ft.ControlEvent) -> None:
+        """Save component details to the database."""
         print("Entering save_component")
-        empty_fields = self.validate_component_fields()
+        empty_fields = self._validate_component_fields()
         if empty_fields:
             print(f"Validation failed: {empty_fields}")
             self.page.open(ft.SnackBar(ft.Text(f"Please fill all required fields: {', '.join(empty_fields)}"), duration=4000))
-            return
-
-        # Validate total quantity
-        try:
-            total_qty = int(self.total_qty_field.value)
-            if total_qty < 0:
-                self.page.open(ft.SnackBar(ft.Text("Total Quantity cannot be negative"), duration=4000))
-                return
-        except ValueError as ve:
-            print(f"Quantity conversion error: {ve}")
-            self.page.open(ft.SnackBar(ft.Text("Total Quantity must be a valid number"), duration=4000))
             return
 
         if self.status_field.value == "Deployed":
@@ -484,57 +545,43 @@ class ComponentForm(ft.Container):
             self.page.update()
             return
 
-        try:
-            print("Connecting to database")
-            connection = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
-            )
-            cur = connection.cursor()
+        # Save the image before saving to the database
+        image_path = self._save_image_to_folder()
+        if self.selected_image and not image_path:
+            return  # Stop if image saving failed
 
-            price = None
-            try:
-                if self.price_field.value:
-                    price = float(self.price_field.value)
-            except ValueError as ve:
-                print(f"Price conversion error: {ve}")
-                self.page.open(ft.SnackBar(ft.Text("Invalid price format. Please enter a valid number."), duration=4000))
+        connection = self._get_db_connection()
+        if not connection:
+            return
+
+        try:
+            cur = connection.cursor()
+            component_data = self._prepare_component_data()
+            if not component_data:
                 return
+
+            component_data["image_path"] = image_path
 
             print("Inserting into component")
             sql = """
                 INSERT INTO component (
-                    name, category, company, model, serial_no, purchaser, location, price, warranty,
-                    total_qty, status, bill_copy, purchase_date, image_path
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    name, category, company, model, serial_no, purchaser, location, warranty,
+                    category_id, price, purchase_date, image_path, model_no, min_qty,
+                    total_qty, remaining_qty, location_id, purchase_cost, status, bill_copy
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cur.execute(sql, (
-                self.name_field.value,
-                self.category_field.value,
-                self.company_field.value,
-                self.model_field.value,
-                self.serial_no_field.value,
-                self.purchaser_field.value,
-                self.location_field.value,
-                price,
-                self.warranty_field.value,
-                total_qty,
-                self.status_field.value,
-                self.bill_copy_display.value if self.bill_copy_display.value != "No file selected" else None,
-                self.purchase_date_text.value if self.purchase_date_text.value != "No date selected" else None,
-                self.image_display.src if self.image_display.src else None
+                component_data["name"], component_data["category"], component_data["company"], component_data["model"],
+                component_data["serial_no"], component_data["purchaser"], component_data["location"], component_data["warranty"],
+                component_data["category_id"], component_data["price"], component_data["purchase_date"], component_data["image_path"],
+                component_data["model_no"], component_data["min_qty"], component_data["total_qty"], component_data["remaining_qty"],
+                component_data["location_id"], component_data["purchase_cost"], component_data["status"], component_data["bill_copy"]
             ))
 
             connection.commit()
             print("Component saved successfully")
-            self.clear_form()
-            print("Before redirect from save_component, current route:", self.page.route)
-            self.page.go("/component")
-            print("After redirect attempt from save_component, current route:", self.page.route)
-            self.page.update()
+            self._clear_form()
+            self._redirect_to_components_page("save_component")
 
         except mysql.connector.Error as error:
             print(f"Database error in save_component: {error}")
@@ -548,15 +595,67 @@ class ComponentForm(ft.Container):
                 connection.close()
                 print("Database connection closed")
 
-    def cancel_form(self, e):
-        print("Entering cancel_form")
-        self.clear_form()
-        print("Before redirect from cancel_form, current route:", self.page.route)
-        self.page.go("/components")
-        print("After redirect attempt from cancel_form, current route:", self.page.route)
-        self.page.update()
+    def _prepare_component_data(self) -> Optional[Dict[str, any]]:
+        """Prepare component data for database insertion."""
+        component_data = {
+            "name": self.name_field.value,
+            "category": self.category_field.value,
+            "company": self.company_field.value,
+            "model": self.model_field.value,
+            "serial_no": self.serial_no_field.value,
+            "purchaser": self.purchaser_field.value,
+            "location": self.location_field.value,
+            "warranty": self.warranty_field.value,
+            "category_id": None,
+            "price": None,
+            "purchase_date": self.purchase_date_text.value if self.purchase_date_text.value != "No date selected" else None,
+            "image_path": None,  # Will be updated in _save_component or _save_deployment
+            "model_no": self.model_no_field.value,
+            "min_qty": None,
+            "total_qty": None,
+            "remaining_qty": None,
+            "location_id": None,
+            "purchase_cost": None,
+            "status": self.status_field.value,
+            "bill_copy": self.bill_copy_display.value if self.bill_copy_display.value != "No file selected" else None,
+        }
 
-    def clear_form(self):
+        # Set category_id and location_id based on selected dropdown values
+        if self.category_field.value:
+            for cat_id, cat_name in self.categories:
+                if cat_name == self.category_field.value:
+                    component_data["category_id"] = cat_id
+                    break
+        if self.location_field.value:
+            for loc_id, loc_name in self.locations:
+                if loc_name == self.location_field.value:
+                    component_data["location_id"] = loc_id
+                    break
+
+        try:
+            if self.price_field.value:
+                component_data["price"] = float(self.price_field.value)
+                component_data["purchase_cost"] = float(self.price_field.value)  # Assuming purchase_cost is same as price
+            if self.min_qty_field.value:
+                component_data["min_qty"] = int(self.min_qty_field.value)
+            if self.total_qty_field.value:
+                component_data["total_qty"] = int(self.total_qty_field.value)
+                component_data["remaining_qty"] = int(self.total_qty_field.value)  # Initially, remaining_qty = total_qty
+        except ValueError as ve:
+            print(f"Value conversion error: {ve}")
+            self.page.open(ft.SnackBar(ft.Text("Invalid format for Price, Minimum Quantity, or Total Quantity. Please enter valid numbers."), duration=4000))
+            return None
+
+        return component_data
+
+    def _cancel_form(self, e: ft.ControlEvent) -> None:
+        """Cancel the form and redirect to the components page."""
+        print("Entering cancel_form")
+        self._clear_form()
+        self._redirect_to_components_page("cancel_form")
+
+    def _clear_form(self) -> None:
+        """Clear all form fields."""
         print("Clearing form")
         self.name_field.value = ""
         self.category_field.value = None
@@ -564,19 +663,30 @@ class ComponentForm(ft.Container):
         self.model_field.value = ""
         self.serial_no_field.value = ""
         self.purchaser_field.value = ""
-        self.location_field.value = ""
-        self.price_field.value = ""
+        self.location_field.value = None
         self.warranty_field.value = ""
+        self.price_field.value = ""
+        self.model_no_field.value = ""
+        self.min_qty_field.value = ""
         self.total_qty_field.value = ""
         self.status_field.value = "Available"
         self.bill_copy_display.value = "No file selected"
-        self.image_display.src = None
-        self.image_display.visible = False
+        self.image_display.value = "No image selected"
+        self.selected_image = None
+        self.image_path = None
         self.purchase_date_text.value = "No date selected"
         self.deployed_to_field.value = ""
         self.user_department_field.value = ""
         self.deploy_date_text.value = "No deploy date selected"
         self.page.update()
 
-def ComponentFormPage(page):
+    def _redirect_to_components_page(self, method: str) -> None:
+        """Redirect to the components page after an action."""
+        print(f"Before redirect from {method}, current route: {self.page.route}")
+        self.page.go("/components")
+        print(f"After redirect attempt from {method}, current route: {self.page.route}")
+        self.page.update()
+
+def ComponentFormPage(page: ft.Page) -> ComponentForm:
+    """Factory function to create a ComponentForm instance."""
     return ComponentForm(page)

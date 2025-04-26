@@ -1,159 +1,116 @@
 import flet as ft
 import mysql.connector
-#from nav.menubar import TopBarPage
+import os
+import datetime
+from typing import Optional, List, Tuple
+import re
+import asyncio
+
 from components.fields import CustomTextField
 
-class UserForm(ft.Container):
+class UserDialog:
     def __init__(self, page: ft.Page):
-        super().__init__()
+        self.page = page
+        self.user_id = None
+        self.selected_image = None
+        self.snackbar_container = None
 
-        page.window.title = "Asset Management System"
-
-        self.expand = True
-
-        # File Picker for Uploading Image
-        self.file_picker = ft.FilePicker(on_result=self.file_picker_result)
-        page.overlay.append(self.file_picker)
-
-        self.name_field = CustomTextField(label="Name")
-        self.emp_id_field = CustomTextField(label="EMP ID")
-        self.password_field = CustomTextField(label="Password", password=True, can_reveal_password=True)
-        self.branch_field = CustomTextField(label="Branch")
-        self.can_login_field = ft.Checkbox(label="This User Can Login")
-
-        c1 = ft.Container(width=50, height=50, bgcolor="red", animate_position=1000)
-
-        c2 = ft.Container(
-            width=50, height=50, bgcolor="green", top=60, left=0, animate_position=500
-        )
-
-        c3 = ft.Container(
-            width=50, height=50, bgcolor="blue", top=120, left=0, animate_position=1000
-        )
-
-        def animate_container(e):
-            c1.top = 20
-            c1.left = 200
-            c2.top = 100
-            c2.left = 40
-            c3.top = 180
-            c3.left = 100
-            page.update()
-
-      
-        
-        # Department Dropdown (Loads department ID and name)
+        # Form Fields
+        self.name_field = CustomTextField(label="Name", hint_text="Enter user name")
+        self.emp_id_field = CustomTextField(label="EMP ID", hint_text="Enter employee ID")
+        self.password_field = CustomTextField(label="Password", hint_text="Enter password", password=True, can_reveal_password=True)
+        self.branch_field = CustomTextField(label="Branch", hint_text="Enter branch name")
         self.department_dropdown = ft.Dropdown(
             label="Department",
-            options=self.dep_dropdown(),  # Fetch data dynamically
+            hint_text="Select Department",
+            options=self._fetch_departments(),
+        )
+        self.can_login_field = ft.Checkbox(label="This User Can Login", value=False, on_change=self._toggle_password_field)
+        self.image_button = ft.ElevatedButton(
+            icon=ft.icons.FILE_UPLOAD,
+            text="Upload Image",
+            on_click=lambda e: self.file_picker.pick_files(
+                allowed_extensions=["jpg", "jpeg", "png", "gif"]
+            )
+        )
+        self.image_display = ft.Text("No Image selected")
+
+        # Password field row (initially hidden)
+        self.password_row = self.build_form_row("Password", self.password_field)
+        self.password_row.visible = False  # Hide by default
+
+        # Save and Cancel Buttons
+        self.save_button = ft.ElevatedButton(
+            "Save",
+            icon=ft.icons.SAVE,
+            bgcolor=ft.colors.GREEN_400,
+            color=ft.colors.WHITE,
+            width=200,
+            on_click=self.save_button_clicked
         )
 
-        # Form Layout
-        self.content = ft.ResponsiveRow(
-            controls=[
-                # Sidebar
-                ft.Container(
-                    width=250,
-                    col={"sm": 12, "md": 3},
-                    content=ft.Column(
-                        controls=[
-                            ft.Stack([c1, c2, c3], height=250),
-                            ft.ElevatedButton("Animate!", on_click=animate_container),
-                        ],
-                        spacing=20
-                    )
-                ),
-                # Main Form Area
-                ft.Container(
-                    expand=True,
-                    col={"sm": 12, "md": 9},
-                    bgcolor=ft.Colors.GREY_100,
-                    padding=30,
-                    content=ft.Container(
-                        bgcolor=ft.Colors.WHITE,
-                        border_radius=ft.border_radius.all(15),
-                        padding=30,
-                        shadow=ft.BoxShadow(blur_radius=10, spread_radius=1, color=ft.Colors.GREY_400),
-                        content=ft.Column(
-                            controls=[
-                                ft.Text("User Registration", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
-                                self.build_form_row("Name", self.name_field),
-                                self.build_form_row("EMP ID", self.emp_id_field),
-                                self.build_form_row("Password", self.password_field),
-                                self.build_form_row("Branch", self.branch_field),
-                                self.build_form_row("Department", self.department_dropdown),
-                                self.build_form_row("This User Can Login", self.can_login_field),
-                                self.build_form_row("Upload Image", 
-                                    ft.ElevatedButton("Choose File", 
-                                        icon=ft.icons.UPLOAD_FILE, 
-                                        on_click=lambda e: self.file_picker.pick_files(allow_multiple=False)
-                                    )
-                                ),
-                                # Save and Cancel Buttons
-                                ft.Row(
-                                    controls=[
-                                        ft.ElevatedButton("Save", 
-                                            icon=ft.icons.SAVE, 
-                                            bgcolor=ft.Colors.GREEN_600, 
-                                            color=ft.Colors.WHITE, 
-                                            style=ft.ButtonStyle(
-                                                shape=ft.RoundedRectangleBorder(radius=10)
-                                            ),
-                                            on_click=self.save_user
-                                        ),
-                                        ft.ElevatedButton("Cancel", 
-                                            icon=ft.icons.CANCEL, 
-                                            bgcolor=ft.Colors.RED_600, 
-                                            color=ft.Colors.WHITE, 
-                                            style=ft.ButtonStyle(
-                                                shape=ft.RoundedRectangleBorder(radius=10)
-                                            )
-                                        ),
-                                    ],
-                                    alignment=ft.MainAxisAlignment.END,
-                                    spacing=20,
-                                )
-                            ],
-                            spacing=20,
-                        )
-                    )
-                )
-            ],
-            spacing=20
+        self.cancel_button = ft.ElevatedButton(
+            "Cancel",
+            icon=ft.icons.CANCEL,
+            bgcolor=ft.colors.RED_400,
+            width=200,
+            color=ft.colors.WHITE,
+            on_click=self.cancel,
         )
 
-    def build_form_row(self, label_text, input_control):
+        # File Picker
+        self.file_picker = ft.FilePicker(on_result=self.image_picked)
+        self.page.overlay.append(self.file_picker)
+
+        # Form inside dialog
+        self.dialog = ft.AlertDialog(
+            modal=True,
+            bgcolor=ft.colors.RED_100,
+            title=ft.Text("Add/Edit User"),
+            content=ft.Column(
+                controls=[
+                    self.build_form_row("Name", self.name_field),
+                    self.build_form_row("EMP ID", self.emp_id_field),
+                    self.password_row,
+                    self.build_form_row("Branch", self.branch_field),
+                    self.build_form_row("Department", self.department_dropdown),
+                    self.build_form_row("Can Login", self.can_login_field),
+                    self.build_form_row("Image", self.image_button),
+                    self.build_form_row("Image", self.image_display),
+                    ft.Row(
+                        controls=[self.save_button, self.cancel_button],
+                        alignment=ft.MainAxisAlignment.END,
+                        spacing=20,
+                    ),
+                ],
+                scroll="adaptive",
+                tight=True,
+                spacing=15,
+            ),
+            actions_alignment=ft.MainAxisAlignment.END,
+            on_dismiss=self.on_dialog_dismiss,
+        )
+        page.overlay.append(self.dialog)
+        page.update()
+
+    def build_form_row(self, label_text: str, input_control: ft.Control) -> ft.Row:
         """Builds a single row for the form with a label and input field."""
-        return ft.ResponsiveRow(
+        return ft.Row(
             controls=[
                 ft.Container(
                     width=150,
-                    col={"xs": 12, "md": 3},
-                    content=ft.Text(label_text, size=18, weight=ft.FontWeight.W_500, color=ft.Colors.BLUE_GREY_700),
+                    content=ft.Text(label_text, size=16, weight=ft.FontWeight.W_500, color=ft.colors.BLUE_GREY_700),
                 ),
                 ft.Container(
                     expand=True,
-                    col={"xs": 12, "md": 9},
                     content=input_control,
                 ),
             ],
             spacing=10,
         )
 
-    def file_picker_result(self, e: ft.FilePickerResultEvent):
-        """Handles the file selection result."""
-        if e.files:
-            print(f"Selected file: {e.files[0].name}")
-
-    def save_user(self, e):
-        """Saves the user data to the database with department_id."""
-        name = self.name_field.value
-        emp_id = self.emp_id_field.value
-        password = self.password_field.value
-        branch = self.branch_field.value
-        department_id = self.department_dropdown.value  # Get department ID
-        can_login = 1 if self.can_login_field.value else 0  # Convert checkbox to 0 or 1
-
+    def _get_db_connection(self) -> Optional[mysql.connector.connection.MySQLConnection]:
+        """Establish and return a database connection."""
         try:
             connection = mysql.connector.connect(
                 host="200.200.200.23",
@@ -162,31 +119,225 @@ class UserForm(ft.Container):
                 database="itasset",
                 auth_plugin='mysql_native_password'
             )
-            cur = connection.cursor()
-            sql = "INSERT INTO users (name, emp_id, password, branch, department_id, can_login) VALUES (%s, %s, %s, %s, %s, %s)"
-            cur.execute(sql, (name, emp_id, password, branch, department_id, can_login))
-            connection.commit()
-            print("User saved successfully.")
+            print("Database connection successful")
+            return connection
         except mysql.connector.Error as error:
-            print("Failed to insert record into MySQL table: {}".format(error))
-        finally:
-            cur.close()
-            connection.close()
+            print(f"Database connection failed: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Database error: {error}"), duration=4000))
+            return None
 
-    def dep_dropdown(self):
-        """Fetch department names and IDs for dropdown."""
-        conn = mysql.connector.connect(
-            host="200.200.200.23",
-            user="root",
-            password="Pak@123",
-            database="itasset",
-            auth_plugin='mysql_native_password'
+    def _fetch_departments(self) -> List[ft.dropdown.Option]:
+        """Fetch department names and IDs for the dropdown."""
+        connection = self._get_db_connection()
+        if not connection:
+            return []
+
+        try:
+            cur = connection.cursor()
+            cur.execute("SELECT id, name FROM department")
+            departments = cur.fetchall()
+            return [ft.dropdown.Option(key=str(dep[0]), text=dep[1]) for dep in departments]
+        except mysql.connector.Error as error:
+            print(f"Error fetching departments: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error fetching departments: {error}"), duration=4000))
+            return []
+        finally:
+            if connection.is_connected():
+                cur.close()
+                connection.close()
+                print("Database connection closed")
+
+    def _toggle_password_field(self, e: ft.ControlEvent):
+        """Show or hide the password field based on the can_login checkbox."""
+        self.password_row.visible = self.can_login_field.value
+        if not self.can_login_field.value:
+            self.password_field.value = ""  # Clear password if user cannot login
+        self.page.update()
+
+    def image_picked(self, e: ft.FilePickerResultEvent):
+        """Handles file selection for image upload."""
+        if e.files:
+            self.selected_image = e.files[0]
+            self.image_display.value = self.selected_image.name
+            print(f"File picked: {self.selected_image.name}")
+        else:
+            self.selected_image = None
+            self.image_display.value = "No Image selected"
+        self.page.update()
+
+    def save_image(self) -> Optional[str]:
+        """Saves the uploaded image to the directory and returns the file path."""
+        if not self.selected_image:
+            return None
+
+        # Define the directory to save the image
+        directory = "assets/images/user"
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # Sanitize the file name
+        name = re.sub(r'[^a-zA-Z0-9]', '_', self.name_field.value.lower())
+        original_filename = self.selected_image.name
+        file_ext = os.path.splitext(original_filename)[1]
+        file_name = f"{name}_{int(self.page.session_id)}_{file_ext}"
+        file_path = os.path.join(directory, file_name)
+
+        # Save the image
+        with open(file_path, "wb") as f:
+            with open(self.selected_image.path, "rb") as sf:
+                f.write(sf.read())
+
+        return file_path
+
+    async def save_button_clicked(self, e):
+        """Handles saving the user."""
+        name = self.name_field.value.strip()
+        emp_id = self.emp_id_field.value.strip()
+        password = self.password_field.value.strip() if self.can_login_field.value else None
+        branch = self.branch_field.value.strip()
+        department_id = int(self.department_dropdown.value) if self.department_dropdown.value else None
+        can_login = 1 if self.can_login_field.value else 0
+
+        # Validation
+        if not name:
+            await self.show_snackbar("Name is required!", ft.colors.RED_400)
+            return
+        if len(name) > 100:
+            await self.show_snackbar("Name must be 100 characters or less!", ft.colors.RED_400)
+            return
+
+        if not emp_id:
+            await self.show_snackbar("Employee ID is required!", ft.colors.RED_400)
+            return
+        if len(emp_id) > 50:
+            await self.show_snackbar("Employee ID must be 50 characters or less!", ft.colors.RED_400)
+            return
+
+        if not branch:
+            await self.show_snackbar("Branch is required!", ft.colors.RED_400)
+            return
+        if len(branch) > 100:
+            await self.show_snackbar("Branch must be 100 characters or less!", ft.colors.RED_400)
+            return
+
+        if not department_id:
+            await self.show_snackbar("Department is required!", ft.colors.RED_400)
+            return
+
+        if can_login and not password:
+            await self.show_snackbar("Password is required if user can login!", ft.colors.RED_400)
+            return
+
+        # Save the image
+        image_path = self.save_image()
+
+        connection = self._get_db_connection()
+        if not connection:
+            return
+
+        try:
+            cur = connection.cursor()
+            # Check for duplicate emp_id (case-insensitive)
+            cur.execute(
+                "SELECT id FROM users WHERE LOWER(emp_id) = LOWER(%s) AND id != %s",
+                (emp_id, self.user_id or 0)
+            )
+            existing_user = cur.fetchone()
+            if existing_user:
+                await self.show_snackbar("Employee ID already exists!", ft.colors.AMBER_300)
+                return
+
+            # Insert or update the user
+            if self.user_id:
+                sql = """
+                    UPDATE users
+                    SET name=%s, emp_id=%s, password=%s, branch=%s, department_id=%s, can_login=%s, image_path=%s
+                    WHERE id=%s
+                """
+                val = (name, emp_id, password, branch, department_id, can_login, image_path, self.user_id)
+            else:
+                sql = """
+                    INSERT INTO users (name, emp_id, password, branch, department_id, can_login, image_path)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                val = (name, emp_id, password, branch, department_id, can_login, image_path)
+
+            cur.execute(sql, val)
+            connection.commit()
+            self.dialog.open = False
+            self.clear_form()
+            self.page.update()
+            await self.show_snackbar(
+                f"User {'updated' if self.user_id else 'added'} successfully!",
+                ft.colors.GREEN_400
+            )
+        except mysql.connector.Error as error:
+            print(f"Error saving user: {error}")
+            await self.show_snackbar(f"Error saving user: {error}", ft.colors.RED_400)
+        finally:
+            if connection.is_connected():
+                cur.close()
+                connection.close()
+                print("Database connection closed")
+
+    async def show_snackbar(self, message: str, color: str):
+        """Displays a snackbar within the dialog."""
+        if self.snackbar_container:
+            self.dialog.content.controls.remove(self.snackbar_container)
+
+        self.snackbar_container = ft.Container(
+            content=ft.Text(message, color=ft.colors.WHITE),
+            bgcolor=color,
+            padding=10,
+            border_radius=5,
+            margin=ft.margin.only(top=10),
         )
-        mycursor = conn.cursor()
-        mycursor.execute("SELECT id, name FROM department")
-        myresult = mycursor.fetchall()
-        
-        department_options = [ft.dropdown.Option(text=x[1], key=str(x[0])) for x in myresult]
-        mycursor.close()
-        conn.close()
-        return department_options
+        self.dialog.content.controls.append(self.snackbar_container)
+        self.page.update()
+        await asyncio.sleep(3)
+        if self.snackbar_container:
+            self.dialog.content.controls.remove(self.snackbar_container)
+            self.snackbar_container = None
+            self.page.update()
+
+    def clear_form(self):
+        """Clears the form fields."""
+        self.name_field.value = ""
+        self.emp_id_field.value = ""
+        self.password_field.value = ""
+        self.branch_field.value = ""
+        self.department_dropdown.value = None
+        self.can_login_field.value = False
+        self.password_row.visible = False
+        self.image_display.value = "No Image selected"
+        self.selected_image = None
+        self.user_id = None
+        if self.snackbar_container:
+            self.dialog.content.controls.remove(self.snackbar_container)
+            self.snackbar_container = None
+
+    def on_dialog_dismiss(self, e: ft.ControlEvent):
+        """Handles dialog dismissal."""
+        self.clear_form()
+        print("Dialog dismissed!")
+        self.page.update()
+
+    def cancel(self, e):
+        """Closes the dialog."""
+        self.dialog.open = False
+        self.clear_form()
+        self.page.update()
+
+    def open(self, name: str = "", emp_id: str = "", password: str = "", branch: str = "", department_id: int = None, can_login: bool = False, image_path: str = "", user_id: int = None):
+        """Opens the dialog with the given user details."""
+        self.user_id = user_id
+        self.name_field.value = name
+        self.emp_id_field.value = emp_id
+        self.password_field.value = password
+        self.branch_field.value = branch
+        self.department_dropdown.value = str(department_id) if department_id else None
+        self.can_login_field.value = can_login
+        self.password_row.visible = can_login
+        self.image_display.value = os.path.basename(image_path) if image_path else "No Image selected"
+        self.dialog.open = True
+        self.page.update()

@@ -1,22 +1,26 @@
 import flet as ft
 from components.fields import CustomTextField
 import mysql.connector
-import os
+import asyncio
 
 class CatDialog:
     def __init__(self, page: ft.Page):
         self.page = page
-
-        
-
+        self.cat_id = None
+        self.snackbar_container = None
 
         # Form Fields
-        self.name_field = CustomTextField(label="Name")
-        self.image_field = ft.ElevatedButton(icon=ft.icons.FILE_UPLOAD, text="Upload Image", on_click=lambda e: self.file_picker.pick_files())
-        self.image_display = ft.Text("No Image selected")
-        self.type_field = CustomTextField(label="Type")
-        self.qty_field = CustomTextField(label="QTY")
-        self.desc_field = CustomTextField(label="Desc")
+        self.name_field = CustomTextField(label="Name", hint_text="Enter category name")
+        self.type_field = ft.Dropdown(
+            label="Type",
+            hint_text="Select category type",
+            options=[
+                ft.dropdown.Option("Asset"),
+                ft.dropdown.Option("Component"),
+                ft.dropdown.Option("Consumable"),
+            ],
+        )
+        self.desc_field = CustomTextField(label="Description", hint_text="Enter description (optional)")
 
         # Save and Cancel Buttons
         self.save_button = ft.ElevatedButton(
@@ -37,35 +41,31 @@ class CatDialog:
             on_click=self.cancel,
         )
 
-        # File Picker
-        self.file_picker = ft.FilePicker(on_result=self.image_picked)
-        self.page.overlay.append(self.file_picker)  # Add file picker to the page
-
         # Form inside dialog
         self.dialog = ft.AlertDialog(
             modal=True,
             bgcolor=ft.colors.RED_100,
-            title=ft.Text("Add Category"),
+            title=ft.Text("Add/Edit Category"),
             content=ft.Column(
                 controls=[
                     self.build_form_row("Name", self.name_field),
-                    self.build_form_row("Image", self.image_field),
-                    self.build_form_row("Image", self.image_display),
                     self.build_form_row("Type", self.type_field),
-                    self.build_form_row("QTY", self.qty_field),
-                    self.build_form_row("Desc", self.desc_field),
-                    # Save and Cancel Buttons
+                    self.build_form_row("Description", self.desc_field),
                     ft.Row(
                         controls=[self.save_button, self.cancel_button],
                         alignment=ft.MainAxisAlignment.END,
                         spacing=20,
                     ),
                 ],
-                scroll="adaptive"
+                scroll="adaptive",
+                tight=True,
+                spacing=15,
             ),
             actions_alignment=ft.MainAxisAlignment.END,
-            on_dismiss=lambda e: print("Dialog dismissed!"),
+            on_dismiss=self.on_dialog_dismiss,
         )
+        page.overlay.append(self.dialog)
+        page.update()
 
     def build_form_row(self, label_text, input_control):
         """Builds a single row for the form with a label and input field."""
@@ -83,67 +83,127 @@ class CatDialog:
             spacing=10,
         )
 
+    def _get_db_connection(self):
+        """Establish and return a database connection."""
+        try:
+            connection = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            print("Database connection successful")
+            return connection
+        except mysql.connector.Error as error:
+            print(f"Database connection failed: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Database error: {error}"), duration=4000))
+            return None
+
     def cancel(self, e):
         """Closes the dialog."""
         self.dialog.open = False
+        self.clear_form()
         self.page.update()
 
-    def save_button_clicked(self, e):
-        # Save the image to the directory
-        image_path = self.save_image()
+    async def save_button_clicked(self, e):
+        """Handles saving the category."""
+        name = self.name_field.value.strip()
+        desc = self.desc_field.value.strip()
+        cat_type = self.type_field.value
 
-        # Save the form data to the database
-        conn = mysql.connector.connect(
-            host="200.200.200.23",
-            user="root",
-            password="Pak@123",
-            database="itasset",
-            auth_plugin='mysql_native_password'
+        # Validation
+        if not name:
+            await self.show_snackbar("Category name is required!", ft.colors.RED_400)
+            return
+
+        if len(name) > 100:
+            await self.show_snackbar("Category name must be 100 characters or less!", ft.colors.RED_400)
+            return
+
+        connection = self._get_db_connection()
+        if not connection:
+            return
+
+        try:
+            cur = connection.cursor()
+            # Check for duplicate category name (case-insensitive)
+            cur.execute(
+                "SELECT id FROM category WHERE LOWER(name) = LOWER(%s) AND id != %s",
+                (name, self.cat_id or 0)
+            )
+            existing_cat = cur.fetchone()
+            if existing_cat:
+                await self.show_snackbar("Category name already exists!", ft.colors.AMBER_300)
+                return
+
+            # Insert or update the category
+            if self.cat_id:
+                sql = "UPDATE category SET name = %s, description = %s, type = %s WHERE id = %s"
+                val = (name, desc, cat_type, self.cat_id)
+            else:
+                sql = "INSERT INTO category (name, description, type) VALUES (%s, %s, %s)"
+                val = (name, desc, cat_type)
+
+            cur.execute(sql, val)
+            connection.commit()
+            self.dialog.open = False
+            self.clear_form()
+            self.page.update()
+            await self.show_snackbar(
+                f"Category {'updated' if self.cat_id else 'added'} successfully!",
+                ft.colors.GREEN_400
+            )
+        except mysql.connector.Error as error:
+            print(f"Error saving category: {error}")
+            await self.show_snackbar(f"Error saving category: {error}", ft.colors.RED_400)
+        finally:
+            if connection.is_connected():
+                cur.close()
+                connection.close()
+                print("Database connection closed")
+
+    async def show_snackbar(self, message: str, color: str):
+        """Displays a snackbar within the dialog."""
+        if self.snackbar_container:
+            self.dialog.content.controls.remove(self.snackbar_container)
+
+        self.snackbar_container = ft.Container(
+            content=ft.Text(message, color=ft.colors.WHITE),
+            bgcolor=color,
+            padding=10,
+            border_radius=5,
+            margin=ft.margin.only(top=10),
         )
-        mycursor = conn.cursor()
-        sql = "INSERT INTO category (name, image, type, qty, description) VALUES (%s, %s, %s, %s, %s)"
-        val = (self.name_field.value, image_path, self.type_field.value, self.qty_field.value, self.desc_field.value)
-        mycursor.execute(sql, val)
-        conn.commit()
-        print(mycursor.rowcount, "record inserted.")
-        conn.close()
+        self.dialog.content.controls.append(self.snackbar_container)
+        self.page.update()
+        await asyncio.sleep(3)
+        if self.snackbar_container:
+            self.dialog.content.controls.remove(self.snackbar_container)
+            self.snackbar_container = None
+            self.page.update()
 
-        # Close the dialog
-        self.dialog.open = False
+    def clear_form(self):
+        """Clears the form fields."""
+        self.name_field.value = ""
+        self.desc_field.value = ""
+        self.type_field.value = None
+        self.cat_id = None
+        if self.snackbar_container:
+            self.dialog.content.controls.remove(self.snackbar_container)
+            self.snackbar_container = None
+
+    def on_dialog_dismiss(self, e: ft.ControlEvent):
+        """Handles dialog dismissal."""
+        self.clear_form()
+        print("Dialog dismissed!")
         self.page.update()
 
-    def save_image(self):
-        """Saves the uploaded image to the directory and returns the file path."""
-        if self.image_display.value != "No Image selected":
-            # Define the directory to save the image
-            directory = "assets/images/category"
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-            # Save the image with a unique name
-            file_name = f"{self.name_field.value}_{self.image_display.value}"
-            file_path = os.path.join(directory, file_name)
-
-            # Assuming the file is available in the file picker result
-            selected_file = self.file_picker.result.files[0]
-            with open(file_path, "wb") as f:
-                with open(selected_file.path, "rb") as sf:
-                    f.write(sf.read())
-
-            return file_path
-        return None
-
-    def image_picked(self, e: ft.FilePickerResultEvent):
-        """Handles file selection for image upload."""
-        if e.files:
-            selected_file = e.files[0]
-            self.image_display.value = selected_file.name  # Display filename
-            print(f"File picked: {selected_file.name}")
-        else:
-            self.image_display.value = "No file selected"
+    def open(self, name: str = "", desc: str = "", image_path: str = "", cat_type: str = "", cat_id: int = None):
+        """Opens the dialog with the given category details."""
+        self.cat_id = cat_id
+        self.name_field.value = name
+        self.desc_field.value = desc
+        self.type_field.value = cat_type
+        self.dialog.open = True
         self.page.update()
-
-    def open(self):
-        """Opens the dialog."""
-        self.page.open(self.dialog)
-

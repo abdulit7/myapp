@@ -1,0 +1,47 @@
+import mysql.connector
+
+def create_database():
+    try:
+        # Connect to MySQL server
+        connection = mysql.connector.connect(
+            host="200.200.200.23",
+            user="root",
+            password="Pak@123"
+        )
+        cur = connection.cursor()
+
+        # Create database if it doesn't exist
+        cur.execute("CREATE DATABASE IF NOT EXISTS itasset")
+        cur.execute("USE itasset")
+
+        # Disable foreign key checks
+        cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+
+        # Drop category table if it exists
+        cur.execute("DROP TABLE IF EXISTS category")
+
+        # Re-enable foreign key checks
+        cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+
+        # Create category table
+        cur.execute("""
+            CREATE TABLE category (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                type VARCHAR(50),  -- e.g., 'Asset', 'Component', 'Consumable'
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
+
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+    finally:
+        if connection.is_connected():
+            cur.close()
+            connection.close()
+            print("MySQL connection is closed")
+
+if __name__ == "__main__":
+    create_database()

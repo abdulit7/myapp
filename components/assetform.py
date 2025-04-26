@@ -15,6 +15,7 @@ class AssetForm(ft.Container):
         self.expand = True
         self.selected_image = None  # Store the selected image file
         self.image_path = None  # Store the path after upload
+        self.categories = {}  # Dictionary to map category names to IDs
 
         # Initialize file pickers
         self.image_picker = ft.FilePicker(
@@ -26,6 +27,7 @@ class AssetForm(ft.Container):
         # Build the UI
         self._setup_page()
         self._initialize_components()
+        self._load_categories()  # Load categories from the database
         self._build_ui()
 
     def _setup_page(self) -> None:
@@ -53,13 +55,8 @@ class AssetForm(ft.Container):
         self.name_field = CustomTextField(label="Name")
         self.category_field = ft.Dropdown(
             label="Category",
-            options=[
-                ft.dropdown.Option("Desktop"),
-                ft.dropdown.Option("Wyse"),
-                ft.dropdown.Option("Keyboard"),
-                ft.dropdown.Option("LCD"),
-            ],
             hint_text="Select Category",
+            options=[]  # Will be populated by _load_categories
         )
         self.company_field = CustomTextField(label="Company")
         self.model_field = CustomTextField(label="Model")
@@ -135,6 +132,31 @@ class AssetForm(ft.Container):
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
+
+    def _load_categories(self) -> None:
+        """Load categories from the database and populate the dropdown."""
+        connection = self._get_db_connection()
+        if not connection:
+            self.page.open(ft.SnackBar(ft.Text("Failed to load categories."), duration=4000))
+            return
+
+        try:
+            cur = connection.cursor()
+            cur.execute("SELECT id, name FROM category WHERE type = 'Asset'")
+            categories = cur.fetchall()
+            self.categories = {name: id for id, name in categories}
+            self.category_field.options = [
+                ft.dropdown.Option(name) for name in self.categories.keys()
+            ]
+            self.page.update()
+        except mysql.connector.Error as error:
+            print(f"Error loading categories: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error loading categories: {error}"), duration=4000))
+        finally:
+            if connection.is_connected():
+                cur.close()
+                connection.close()
+                print("Database connection closed")
 
     def _build_ui(self) -> None:
         """Build the main UI layout."""
@@ -432,17 +454,22 @@ class AssetForm(ft.Container):
             if not asset_data:
                 return
 
+            category_id = self.categories.get(self.category_field.value)
+            if not category_id:
+                self.page.open(ft.SnackBar(ft.Text("Invalid category selected."), duration=4000))
+                return
+
             asset_data["image_path"] = image_path
 
             print("Inserting into deployed_assets")
             sql = """
                 INSERT INTO deployed_assets (
-                    name, category, company, model, serial_no, purchaser, location, price, warranty,
+                    name, category_id, company, model, serial_no, purchaser, location, price, warranty,
                     bill_copy, purchase_date, image_path, deployed_to, user_department, deploy_date
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cur.execute(sql, (
-                asset_data["name"], asset_data["category"], asset_data["company"], asset_data["model"],
+                asset_data["name"], category_id, asset_data["company"], asset_data["model"],
                 asset_data["serial_no"], asset_data["purchaser"], asset_data["location"], asset_data["price"],
                 asset_data["warranty"], asset_data["bill_copy"], asset_data["purchase_date"], asset_data["image_path"],
                 deployed_to, user_department, deploy_date
@@ -504,17 +531,22 @@ class AssetForm(ft.Container):
             if not asset_data:
                 return
 
+            category_id = self.categories.get(self.category_field.value)
+            if not category_id:
+                self.page.open(ft.SnackBar(ft.Text("Invalid category selected."), duration=4000))
+                return
+
             asset_data["image_path"] = image_path
 
             print("Inserting into assets")
             sql = """
                 INSERT INTO assets (
-                    name, category, company, model, serial_no, purchaser, location, price, warranty,
+                    name, category_id, company, model, serial_no, purchaser, location, price, warranty,
                     status, bill_copy, purchase_date, image_path
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cur.execute(sql, (
-                asset_data["name"], asset_data["category"], asset_data["company"], asset_data["model"],
+                asset_data["name"], category_id, asset_data["company"], asset_data["model"],
                 asset_data["serial_no"], asset_data["purchaser"], asset_data["location"], asset_data["price"],
                 asset_data["warranty"], asset_data["status"], asset_data["bill_copy"],
                 asset_data["purchase_date"], asset_data["image_path"]
@@ -541,7 +573,7 @@ class AssetForm(ft.Container):
         """Prepare asset data for database insertion."""
         asset_data = {
             "name": self.name_field.value,
-            "category": self.category_field.value,
+            "category_id": None,  # Will be updated in _save_asset or _save_deployment
             "company": self.company_field.value,
             "model": self.model_field.value,
             "serial_no": self.serial_no_field.value,

@@ -1,8 +1,7 @@
 import flet as ft
-from components.fields import CustomTextField
 import mysql.connector
 import asyncio
-
+from components.fields import CustomTextField
 
 class DepartDialog:
     def __init__(self, page: ft.Page, parent):
@@ -12,8 +11,8 @@ class DepartDialog:
         self.snackbar_container = None
 
         # Form Fields
-        self.name_field = CustomTextField(label="Name")
-        self.Desc_field = CustomTextField(label="Desc")
+        self.name_field = CustomTextField(label="Department Name", hint_text="Enter department name")
+        self.desc_field = CustomTextField(label="Description", hint_text="Enter description (optional)")
 
         # Save and Cancel Buttons
         self.save_button = ft.ElevatedButton(
@@ -22,7 +21,7 @@ class DepartDialog:
             bgcolor=ft.colors.GREEN_400,
             color=ft.colors.WHITE,
             width=200,
-            on_click=lambda e: asyncio.run(self.save_button_clicked(e))
+            on_click=self.save_button_clicked
         )
 
         self.cancel_button = ft.ElevatedButton(
@@ -41,14 +40,16 @@ class DepartDialog:
             content=ft.Column(
                 controls=[
                     self.name_field,
-                    self.Desc_field,
+                    self.desc_field,
                     ft.Row(
                         controls=[self.save_button, self.cancel_button],
                         alignment=ft.MainAxisAlignment.END,
                         spacing=20,
                     ),
                 ],
-                scroll="adaptive"
+                scroll="adaptive",
+                tight=True,
+                spacing=15,
             ),
             actions_alignment=ft.MainAxisAlignment.END,
             on_dismiss=self.on_dialog_dismiss,
@@ -56,60 +57,92 @@ class DepartDialog:
         page.overlay.append(self.dialog)
         page.update()
 
-    def cancel(self, e):
+    def _get_db_connection(self) -> mysql.connector.connection.MySQLConnection:
+        """Establish and return a database connection."""
+        try:
+            connection = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            print("Database connection successful")
+            return connection
+        except mysql.connector.Error as error:
+            print(f"Database connection failed: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Database error: {error}"), duration=4000))
+            return None
+
+    def cancel(self, e: ft.ControlEvent):
         """Closes the dialog."""
         self.dialog.open = False
+        self.clear_form()
         self.page.update()
 
-    async def save_button_clicked(self, e):
+    async def save_button_clicked(self, e: ft.ControlEvent):
         """Handles saving the department."""
         name = self.name_field.value.strip()
-        desc = self.Desc_field.value.strip()
+        desc = self.desc_field.value.strip()
 
+        # Validation
         if not name:
-            await self.show_snackbar("Name required!", ft.colors.RED_400)
+            await self.show_snackbar("Department name is required!", ft.colors.RED_400)
             return
 
-        conn = mysql.connector.connect(
-            host="200.200.200.23",
-            user="root",
-            password="Pak@123",
-            database="itasset",
-            auth_plugin='mysql_native_password'
-        )
-        mycursor = conn.cursor()
-
-        # Check if department name already exists
-        mycursor.execute("SELECT id FROM department WHERE LOWER(name) = LOWER(%s) AND id != %s", (name, self.dep_id or 0))
-        existing_dep = mycursor.fetchone()
-
-        if existing_dep:
-            await self.show_snackbar("Department name already exists!", ft.colors.AMBER_300)
-            conn.close()
+        if len(name) > 100:
+            await self.show_snackbar("Department name must be 100 characters or less!", ft.colors.RED_400)
             return
 
-        # Insert or update the department
-        if self.dep_id:
-            sql = "UPDATE department SET name = %s, description = %s WHERE id = %s"
-            val = (name, desc, self.dep_id)
-        else:
-            sql = "INSERT INTO department (name, description) VALUES (%s, %s)"
-            val = (name, desc)
+        if desc and len(desc) > 255:
+            await self.show_snackbar("Description must be 255 characters or less!", ft.colors.RED_400)
+            return
 
-        mycursor.execute(sql, val)
-        conn.commit()
-        conn.close()
+        connection = self._get_db_connection()
+        if not connection:
+            return
 
-        self.parent.load_departments()
+        try:
+            cur = connection.cursor()
+            # Check for duplicate department name (case-insensitive)
+            cur.execute(
+                "SELECT id FROM department WHERE LOWER(name) = LOWER(%s) AND id != %s",
+                (name, self.dep_id or 0)
+            )
+            existing_dep = cur.fetchone()
+            if existing_dep:
+                await self.show_snackbar("Department name already exists!", ft.colors.AMBER_300)
+                return
 
-        # Close the dialog
-        self.dialog.open = False
-        self.page.update()
+            # Insert or update the department
+            if self.dep_id:
+                sql = "UPDATE department SET name = %s, description = %s WHERE id = %s"
+                val = (name, desc, self.dep_id)
+            else:
+                sql = "INSERT INTO department (name, description) VALUES (%s, %s)"
+                val = (name, desc)
 
-        await self.show_snackbar("Department saved successfully!", ft.colors.GREEN_400)
+            cur.execute(sql, val)
+            connection.commit()
+            self.parent.load_departments()
+            self.dialog.open = False
+            self.clear_form()
+            self.page.update()
+            await self.show_snackbar(
+                f"Department {'updated' if self.dep_id else 'added'} successfully!",
+                ft.colors.GREEN_400
+            )
+        except mysql.connector.Error as error:
+            print(f"Error saving department: {error}")
+            await self.show_snackbar(f"Error saving department: {error}", ft.colors.RED_400)
+        finally:
+            if connection.is_connected():
+                cur.close()
+                connection.close()
+                print("Database connection closed")
 
-    async def show_snackbar(self, message, color):
-        """Simulates a SnackBar within the AlertDialog."""
+    async def show_snackbar(self, message: str, color: str):
+        """Displays a snackbar within the dialog."""
         if self.snackbar_container:
             self.dialog.content.controls.remove(self.snackbar_container)
 
@@ -122,32 +155,31 @@ class DepartDialog:
         )
         self.dialog.content.controls.append(self.snackbar_container)
         self.page.update()
-        asyncio.create_task(self.remove_snackbar_after_delay())
-
-    async def remove_snackbar_after_delay(self):
         await asyncio.sleep(3)
         if self.snackbar_container:
             self.dialog.content.controls.remove(self.snackbar_container)
             self.snackbar_container = None
             self.page.update()
 
-    def on_dialog_dismiss(self, e):
+    def clear_form(self):
+        """Clears the form fields."""
+        self.name_field.value = ""
+        self.desc_field.value = ""
+        self.dep_id = None
         if self.snackbar_container:
             self.dialog.content.controls.remove(self.snackbar_container)
             self.snackbar_container = None
+
+    def on_dialog_dismiss(self, e: ft.ControlEvent):
+        """Handles dialog dismissal."""
+        self.clear_form()
         print("Dialog dismissed!")
         self.page.update()
 
-    def open(self, name="", desc="", dep_id=None):
+    def open(self, name: str = "", desc: str = "", dep_id: int = None):
         """Opens the dialog with the given department details."""
         self.dep_id = dep_id
         self.name_field.value = name
-        self.Desc_field.value = desc
-
-        if self.snackbar_container:
-            self.dialog.content.controls.remove(self.snackbar_container)
-            self.snackbar_container = None
-            self.page.update()
-
+        self.desc_field.value = desc
         self.dialog.open = True
         self.page.update()

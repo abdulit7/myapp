@@ -3,6 +3,7 @@ from components.cards import MainCards
 from components.chart import chart_page
 from components.assetlistscroll import list_scroll
 from components.componentlistscroll import compo_scroll
+from components.history_table import history_table
 
 
 class Home(ft.Container):
@@ -44,6 +45,7 @@ class Home(ft.Container):
                     alignment=ft.MainAxisAlignment.START,
                     spacing=200,
                 ),
+                history_table(page),
             ],
             spacing=20,
         )

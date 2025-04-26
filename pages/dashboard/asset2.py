@@ -2,6 +2,7 @@ import flet as ft
 import mysql.connector
 from components.manageasset import ManageAssetDialog
 from components.assetdialog import AssetDialog
+import os.path
 
 class AssetPagee(ft.Container):
     def __init__(self, page: ft.Page):
@@ -13,40 +14,47 @@ class AssetPagee(ft.Container):
         page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
         page.vertical_alignment = ft.MainAxisAlignment.START
 
+        # Supported image extensions
+        self.supported_image_extensions = {".jpg", ".jpeg", ".png", ".gif"}
+
+        # Fetch and cache category data to avoid repeated JOINs
+        self.category_map = {}
+        connection = self._get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute("SELECT id, name FROM category")
+                self.category_map = {row[0]: row[1] for row in cursor.fetchall()}
+                print(f"Cached categories: {self.category_map}")
+            except mysql.connector.Error as err:
+                print(f"Error fetching categories: {err}")
+                self.page.open(ft.SnackBar(ft.Text(f"Error fetching categories: {err}"), duration=4000))
+            finally:
+                if connection.is_connected():
+                    cursor.close()
+                    connection.close()
+                    print("Database connection closed")
+
+        # Initialize dialogs
         self.asset_dialog = AssetDialog(page)
         self.manage_Asset = ManageAssetDialog(page, self)
 
         # Product Detail Banner
         def close_banner(e):
             page.close(self.banner)
-            page.add(ft.Text("Action clicked: " + e.control.text))
 
-        action_button_style = ft.ButtonStyle(color=ft.colors.BLUE)
-        asset_details = {
-            "Name": "Laptop",
-            "Category": "Electronics",
-            "Company": "Dell",
-            "Model": "XPS 15",
-            "Serial No": "123456789",
-            "Purchase Date": "2023-01-15",
-            "Warranty": "2 Years",
-            "Price": "$1500",
-            "Status": "Available"
-        }
-        asset_detail_rows = [
-            ft.Row(controls=[ft.Text(f"{key}: ", weight=ft.FontWeight.BOLD), ft.Text(value)])
-            for key, value in asset_details.items()
-        ]
+        action_button_style = ft.ButtonStyle(color=ft.Colors.BLUE)
 
+        # Placeholder banner content (will be updated dynamically)
         banner_content = ft.Row(
             controls=[
                 ft.Column(
-                    controls=[ft.Text("Asset Details:", color=ft.colors.BLACK, weight=ft.FontWeight.BOLD, size=20)] + asset_detail_rows,
+                    controls=[ft.Text("Asset Details:", color=ft.Colors.BLACK, weight=ft.FontWeight.BOLD, size=20)],
                     expand=True,
                 ),
                 ft.Container(
                     content=ft.Image(
-                        src="/images/jojo.jpg",  # Adjusted path
+                        src="/images/placeholder.jpg",
                         width=150,
                         height=150,
                         fit=ft.ImageFit.CONTAIN,
@@ -59,85 +67,92 @@ class AssetPagee(ft.Container):
         )
 
         self.banner = ft.Banner(
-            bgcolor=ft.colors.WHITE70,
-            leading=ft.Icon(ft.icons.WARNING_AMBER_ROUNDED, color=ft.colors.AMBER, size=40),
+            bgcolor=ft.Colors.WHITE70,
+            leading=ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER, size=40),
             content=banner_content,
             actions=[
-                ft.ElevatedButton(text="View", icon=ft.icons.ACCESS_ALARM, width=100, style=action_button_style, on_click=close_banner),
+                ft.ElevatedButton(text="View", icon=ft.Icons.ACCESS_ALARM, width=100, style=action_button_style, on_click=close_banner),
                 ft.TextButton(text="Ignore", style=action_button_style, on_click=close_banner),
                 ft.TextButton(text="Cancel", style=action_button_style, on_click=close_banner),
             ],
         )
 
         self.add_asset_button = ft.ElevatedButton(
-            icon=ft.icons.ADD,
+            icon=ft.Icons.ADD,
             text="Add Asset",
             on_click=lambda e: page.go('/assetform'),
             style=ft.ButtonStyle(
-                bgcolor=ft.colors.GREEN_500,
-                color=ft.colors.WHITE,
+                bgcolor=ft.Colors.GREEN_500,
+                color=ft.Colors.WHITE,
                 padding=ft.Padding(16, 12, 16, 12),
                 shape=ft.RoundedRectangleBorder(radius=12),
-                overlay_color=ft.colors.with_opacity(0.15, ft.colors.WHITE),
+                overlay_color=ft.Colors.with_opacity(0.15, ft.Colors.WHITE),
                 elevation=6,
             ),
             width=180,
             height=55,
         )
 
-        # Database Connection
-        try:
-            mydb = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
-            )
-            print("Database connection successful")
-        except mysql.connector.Error as err:
-            print(f"Database connection failed: {err}")
-            mydb = None
+        # Category search dropdown
+        self.category_dropdown = ft.Dropdown(
+            label="Filter by Category",
+            options=[
+                ft.dropdown.Option(key=None, text="All Categories")
+            ] + [
+                ft.dropdown.Option(key=cat_id, text=cat_name)
+                for cat_id, cat_name in self.category_map.items()
+            ],
+            value=None,  # Default to "All Categories"
+            on_change=self.filter_by_category,
+            width=250,
+            border_radius=10,
+            bgcolor=ft.Colors.WHITE,
+            border_color=ft.Colors.GREY_400,
+        )
 
-        # Fetch available assets
-        self.asset_data = []
-        if mydb:
-            try:
-                mycur = mydb.cursor()
-                mycur.execute("SELECT id, name, category, company, model, status, image_path FROM assets")
-                self.asset_data = mycur.fetchall()
-                print(f"Query returned {len(self.asset_data)} rows from assets: {self.asset_data}")
-            except mysql.connector.Error as err:
-                print(f"Query failed for assets: {err}")
-                self.asset_data = []
-            finally:
-                if mydb.is_connected():
-                    mycur.close()
+        # Clear filter button
+        self.clear_button = ft.ElevatedButton(
+            icon=ft.Icons.CLEAR,
+            text="Clear",
+            on_click=self.clear_filter,
+            style=ft.ButtonStyle(
+                bgcolor=ft.Colors.RED_500,
+                color=ft.Colors.WHITE,
+                padding=ft.Padding(16, 12, 16, 12),
+                shape=ft.RoundedRectangleBorder(radius=12),
+                overlay_color=ft.Colors.with_opacity(0.15, ft.Colors.WHITE),
+                elevation=6,
+            ),
+            width=120,
+            height=55,
+        )
 
-        # Fetch deployed assets
-        self.deployed_data = []
-        if mydb:
-            try:
-                mycur = mydb.cursor()
-                mycur.execute("SELECT id, name, category, company, model, deployed_to, user_department, deploy_date, image_path FROM deployed_assets")
-                self.deployed_data = mycur.fetchall()
-                print(f"Query returned {len(self.deployed_data)} rows from deployed_assets: {self.deployed_data}")
-            except mysql.connector.Error as err:
-                print(f"Query failed for deployed_assets: {err}")
-                self.deployed_data = []
-            finally:
-                if mydb.is_connected():
-                    mycur.close()
-                    mydb.close()
+        # Fetch initial asset data
+        self.asset_data = self._fetch_assets()
+        self.deployed_data = self._fetch_deployed_assets()
+        self.disposed_data = self._fetch_disposed_assets()
+
+        # Fallback UI for empty tabs
+        no_assets_message = ft.Container(
+            content=ft.Text(
+                "No Assets Found",
+                size=20,
+                color=ft.Colors.RED_700,
+                weight=ft.FontWeight.BOLD,
+                text_align=ft.TextAlign.CENTER,
+            ),
+            alignment=ft.alignment.center,
+            padding=ft.padding.all(50),
+        )
 
         self.deployable_cards = ft.ResponsiveRow(
             controls=[
                 ft.Container(
                     content=self.create_asset_card(
                         data=x,
-                        status_color=ft.colors.LIGHT_GREEN_ACCENT_400,
+                        status_color=ft.Colors.LIGHT_GREEN_ACCENT_400,
                         on_manage_click=lambda id, name: self.manage_Asset.open(asset_id=id, name=name),
-                        on_select=lambda e: self.show_banner(),
+                        on_select=lambda e, asset=x: self.show_banner(asset=asset, is_deployed=False),
                     ),
                     col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
                     padding=ft.padding.all(10),
@@ -154,9 +169,9 @@ class AssetPagee(ft.Container):
                 ft.Container(
                     content=self.create_deployed_card(
                         data=data,
-                        status_color=ft.colors.LIGHT_BLUE_ACCENT_700,
+                        status_color=ft.Colors.LIGHT_BLUE_ACCENT_700,
                         on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
-                        on_select=lambda e: self.show_banner(),
+                        on_select=lambda e, asset=data: self.show_banner(asset=asset, is_deployed=True),
                     ),
                     col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
                     padding=ft.padding.all(10),
@@ -168,77 +183,19 @@ class AssetPagee(ft.Container):
             run_spacing=0,
         )
 
-        # Faulted Cards
-        faulted_data = [
-            ("Laptop", "Dell", "XPS 15", "19-02-2023", "19-02-2024", "Faulty Screen", "Scraped", "Disposed", ft.colors.RED_ACCENT_400),
-            ("Mouse", "Logitech", "MX Master 3", "987654321", "2023-06-01", "1 Year", "$100", "Sold", ft.colors.YELLOW_ACCENT_400),
-        ]
-
-        def create_faulted_card(data, status_color, on_manage_click, on_select):
-            category, company, model, purchase_date, defected_date, reason, action, status, _ = data
-            return ft.Card(
-                content=ft.Container(
-                    content=ft.Column(
-                        [
-                            ft.Row(
-                                [
-                                    ft.Text(f"Category: {category}", size=16, weight=ft.FontWeight.BOLD, color="#263238"),
-                                    ft.Container(
-                                        content=ft.Row(
-                                            [
-                                                ft.Container(width=15, height=15, bgcolor=status_color, border_radius=10),
-                                                ft.Text(status, color=ft.colors.BLACK),
-                                            ],
-                                            spacing=5,
-                                            alignment=ft.MainAxisAlignment.END,
-                                        ),
-                                        alignment=ft.alignment.center_right,
-                                    ),
-                                ],
-                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                            ),
-                            ft.Text(f"Company: {company}", size=14, color="#263238"),
-                            ft.Text(f"Model: {model}", size=14, color="#263238"),
-                            ft.Text(f"Purchase Date: {purchase_date}", size=14, color="#263238"),
-                            ft.Text(f"Defected Date: {defected_date}", size=14, color="#263238"),
-                            ft.Text(f"Reason: {reason}", size=14, color="#263238"),
-                            ft.Text(f"Action: {action}", size=14, color="#263238"),
-                            ft.ElevatedButton(
-                                "Manage",
-                                icon=ft.icons.PENDING_ACTIONS,
-                                bgcolor=ft.colors.BLUE_300,
-                                color=ft.colors.WHITE,
-                                on_click=on_manage_click,
-                                width=100,
-                            ),
-                        ],
-                        spacing=5,
-                        alignment=ft.MainAxisAlignment.START,
-                    ),
-                    padding=15,
-                    bgcolor="#E3F2FD",
-                    border_radius=12,
-                    ink=True,
-                    on_click=on_select,
-                    width=300,
-                    height=300,
-                ),
-                elevation=5,
-            )
-
-        self.faulted_cards = ft.ResponsiveRow(
+        self.disposed_cards = ft.ResponsiveRow(
             controls=[
                 ft.Container(
-                    content=create_faulted_card(
+                    content=self.create_disposed_card(
                         data=data,
-                        status_color=data[8],
+                        status_color=ft.Colors.RED_ACCENT_400 if data[7] == "Scrap" else (ft.Colors.YELLOW_ACCENT_400 if data[7] == "Sold" else ft.Colors.GREY_400),
                         on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
-                        on_select=lambda e: self.show_banner(),
+                        on_select=lambda e, asset=data: self.show_banner(asset=asset, is_disposed=True),
                     ),
                     col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
                     padding=ft.padding.all(10),
                 )
-                for data in faulted_data
+                for data in self.disposed_data
             ],
             alignment=ft.MainAxisAlignment.START,
             spacing=0,
@@ -252,7 +209,7 @@ class AssetPagee(ft.Container):
                 ft.Tab(
                     text="Available",
                     content=ft.Column(
-                        controls=[self.deployable_cards],
+                        controls=[self.deployable_cards if self.asset_data else no_assets_message],
                         scroll=ft.ScrollMode.AUTO,
                         expand=True,
                     )
@@ -260,7 +217,7 @@ class AssetPagee(ft.Container):
                 ft.Tab(
                     text="Assigned",
                     content=ft.Column(
-                        controls=[self.deployed_cards],
+                        controls=[self.deployed_cards if self.deployed_data else no_assets_message],
                         scroll=ft.ScrollMode.AUTO,
                         expand=True,
                     )
@@ -268,7 +225,7 @@ class AssetPagee(ft.Container):
                 ft.Tab(
                     text="Disposed/Sold",
                     content=ft.Column(
-                        controls=[self.faulted_cards],
+                        controls=[self.disposed_cards if self.disposed_data else no_assets_message],
                         scroll=ft.ScrollMode.AUTO,
                         expand=True,
                     )
@@ -279,8 +236,16 @@ class AssetPagee(ft.Container):
 
         self.content = ft.Column(
             controls=[
-                ft.Divider(height=1, color=ft.colors.WHITE),
-                ft.Row(controls=[self.add_asset_button], alignment=ft.MainAxisAlignment.START),
+                ft.Divider(height=1, color=ft.Colors.WHITE),
+                ft.Row(
+                    controls=[
+                        self.add_asset_button,
+                        self.category_dropdown,
+                        self.clear_button,
+                    ],
+                    alignment=ft.MainAxisAlignment.START,
+                    spacing=15,
+                ),
                 self.tabs,
             ],
             expand=True,
@@ -289,13 +254,411 @@ class AssetPagee(ft.Container):
 
         page.update()
 
-    def show_banner(self):
+    def _get_db_connection(self):
+        """Establish and return a database connection."""
+        try:
+            connection = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            print("Database connection successful")
+            return connection
+        except mysql.connector.Error as error:
+            print(f"Database connection failed: {error}")
+            self.page.open(ft.SnackBar(ft.Text(f"Database error: {error}"), duration=4000))
+            return None
+
+    def _fetch_assets(self, category_filter=None):
+        """Fetch available assets from the database, optionally filtered by category."""
+        connection = self._get_db_connection()
+        if not connection:
+            return []
+
+        try:
+            cursor = connection.cursor()
+            query = """
+                SELECT id, name, category_id, company, model, status, image_path
+                FROM assets
+            """
+            params = ()
+            if category_filter:
+                query += " WHERE category_id = %s"
+                params = (category_filter,)
+
+            cursor.execute(query, params)
+            asset_data_raw = cursor.fetchall()
+            # Map category_id to category name using the cached category_map
+            asset_data = [
+                (row[0], row[1], self.category_map.get(row[2], "Unknown"), row[3], row[4], row[5], row[6])
+                for row in asset_data_raw
+            ]
+            print(f"Query returned {len(asset_data)} rows from assets: {asset_data}")
+            return asset_data
+        except mysql.connector.Error as err:
+            print(f"Query failed for assets: {err}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error fetching assets: {err}"), duration=4000))
+            return []
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+                print("Database connection closed")
+
+    def _fetch_deployed_assets(self, category_filter=None):
+        """Fetch deployed assets from the database, optionally filtered by category."""
+        connection = self._get_db_connection()
+        if not connection:
+            return []
+
+        try:
+            cursor = connection.cursor()
+            query = """
+                SELECT da.id, da.name, da.category_id, da.company, da.model, 
+                    u.name AS deployed_to_name, u.emp_id AS deployed_to_emp_id, 
+                    da.user_department, da.deploy_date, da.image_path
+                FROM deployed_assets da
+                LEFT JOIN users u ON da.deployed_to = u.id
+            """
+            params = ()
+            if category_filter:
+                query += " WHERE da.category_id = %s"
+                params = (category_filter,)
+
+            cursor.execute(query, params)
+            deployed_data_raw = cursor.fetchall()
+            # Map category_id to category name using the cached category_map
+            deployed_data = [
+                (
+                    row[0],  # Asset ID
+                    row[1],  # Asset Name
+                    self.category_map.get(row[2], "Unknown"),  # Category Name
+                    row[3],  # Company
+                    row[4],  # Model
+                    f"{row[5]} (Emp ID: {row[6]})" if row[5] and row[6] else "Not Assigned",  # Deployed To (Name and Emp ID)
+                    row[7],  # User Department
+                    row[8],  # Deploy Date
+                    row[9],  # Image Path
+                )
+                for row in deployed_data_raw
+            ]
+            print(f"Query returned {len(deployed_data)} rows from deployed_assets: {deployed_data}")
+            return deployed_data
+        except mysql.connector.Error as err:
+            print(f"Query failed for deployed_assets: {err}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error fetching deployed assets: {err}"), duration=4000))
+            return []
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+                print("Database connection closed")
+
+    def _fetch_disposed_assets(self, category_filter=None):
+        """Fetch disposed assets from the database, optionally filtered by category."""
+        connection = self._get_db_connection()
+        if not connection:
+            return []
+
+        try:
+            cursor = connection.cursor()
+            query = """
+                SELECT id, name, category_id, company, model, purchase_date, disposal_date, disposal_type,
+                       amount_earned, disposal_reason, disposal_location, sale_details, sold_to, image_path
+                FROM disposed_assets
+            """
+            params = ()
+            if category_filter:
+                query += " WHERE category_id = %s"
+                params = (category_filter,)
+
+            cursor.execute(query, params)
+            disposed_data_raw = cursor.fetchall()
+            # Map category_id to category name using the cached category_map
+            disposed_data = [
+                (row[0], row[1], self.category_map.get(row[2], "Unknown"), row[3], row[4], row[5], row[6], row[7],
+                 row[8], row[9], row[10], row[11], row[12], row[13])
+                for row in disposed_data_raw
+            ]
+            print(f"Query returned {len(disposed_data)} rows from disposed_assets: {disposed_data}")
+            return disposed_data
+        except mysql.connector.Error as err:
+            print(f"Query failed for disposed_assets: {err}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error fetching disposed assets: {err}"), duration=4000))
+            return []
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+                print("Database connection closed")
+
+    def filter_by_category(self, e):
+        """Filter assets by the selected category."""
+        selected_category_id = self.category_dropdown.value
+        try:
+            # Re-fetch data with the selected category filter
+            self.asset_data = self._fetch_assets(category_filter=selected_category_id)
+            self.deployed_data = self._fetch_deployed_assets(category_filter=selected_category_id)
+            self.disposed_data = self._fetch_disposed_assets(category_filter=selected_category_id)
+
+            # Update the cards in each tab
+            self.update_cards()
+            self.page.update()
+
+        except mysql.connector.Error as err:
+            print(f"Error filtering by category: {err}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error filtering by category: {err}"), duration=4000))
+
+    def clear_filter(self, e):
+        """Clear the category filter and show all assets."""
+        self.category_dropdown.value = None  # Reset to "All Categories"
+        try:
+            # Re-fetch all data without a category filter
+            self.asset_data = self._fetch_assets()
+            self.deployed_data = self._fetch_deployed_assets()
+            self.disposed_data = self._fetch_disposed_assets()
+
+            # Update the cards in each tab
+            self.update_cards()
+            self.page.update()
+
+        except mysql.connector.Error as err:
+            print(f"Error clearing filter: {err}")
+            self.page.open(ft.SnackBar(ft.Text(f"Error clearing filter: {err}"), duration=4000))
+
+    def update_cards(self):
+        """Update the cards in all tabs based on the current data."""
+        no_assets_message = ft.Container(
+            content=ft.Text(
+                "No Assets Found",
+                size=20,
+                color=ft.Colors.RED_700,
+                weight=ft.FontWeight.BOLD,
+                text_align=ft.TextAlign.CENTER,
+            ),
+            alignment=ft.alignment.center,
+            padding=ft.padding.all(50),
+        )
+
+        # Update deployable cards
+        self.deployable_cards.controls = [
+            ft.Container(
+                content=self.create_asset_card(
+                    data=x,
+                    status_color=ft.Colors.LIGHT_GREEN_ACCENT_400,
+                    on_manage_click=lambda id, name: self.manage_Asset.open(asset_id=id, name=name),
+                    on_select=lambda e, asset=x: self.show_banner(asset=asset, is_deployed=False),
+                ),
+                col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                padding=ft.padding.all(10),
+            )
+            for x in self.asset_data
+        ]
+        self.tabs.tabs[0].content.controls = [self.deployable_cards if self.asset_data else no_assets_message]
+
+        # Update deployed cards
+        self.deployed_cards.controls = [
+            ft.Container(
+                content=self.create_deployed_card(
+                    data=data,
+                    status_color=ft.Colors.LIGHT_BLUE_ACCENT_700,
+                    on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
+                    on_select=lambda e, asset=data: self.show_banner(asset=asset, is_deployed=True),
+                ),
+                col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                padding=ft.padding.all(10),
+            )
+            for data in self.deployed_data
+        ]
+        self.tabs.tabs[1].content.controls = [self.deployed_cards if self.deployed_data else no_assets_message]
+
+        # Update disposed cards
+        self.disposed_cards.controls = [
+            ft.Container(
+                content=self.create_disposed_card(
+                    data=data,
+                    status_color=ft.Colors.RED_ACCENT_400 if data[7] == "Scrap" else (ft.Colors.YELLOW_ACCENT_400 if data[7] == "Sold" else ft.Colors.GREY_400),
+                    on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
+                    on_select=lambda e, asset=data: self.show_banner(asset=asset, is_disposed=True),
+                ),
+                col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                padding=ft.padding.all(10),
+            )
+            for data in self.disposed_data
+        ]
+        self.tabs.tabs[2].content.controls = [self.disposed_cards if self.disposed_data else no_assets_message]
+
+    def _is_supported_image_format(self, image_path: str) -> bool:
+        """Check if the image path has a supported extension (jpg, jpeg, png, gif)."""
+        if not image_path:
+            return False
+        _, ext = os.path.splitext(image_path.lower())
+        return ext in self.supported_image_extensions
+
+    def show_banner(self, asset=None, is_deployed=False, is_disposed=False):
+        """Display asset details in a banner."""
+        if asset:
+            connection = self._get_db_connection()
+            if not connection:
+                return
+
+            try:
+                cursor = connection.cursor()
+                if is_deployed:
+                    cursor.execute(
+                        """
+                        SELECT name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                               bill_copy, purchase_date, image_path, deployed_to, user_department, deploy_date
+                        FROM deployed_assets WHERE id = %s
+                        """,
+                        (asset[0],)
+                    )
+                    asset_data = cursor.fetchone()
+                    if asset_data:
+                        asset_details = {
+                            "Name": str(asset_data[0]) if asset_data[0] is not None else "",
+                            "Category": self.category_map.get(asset_data[1], "Unknown"),
+                            "Company": str(asset_data[2]) if asset_data[2] is not None else "",
+                            "Model": str(asset_data[3]) if asset_data[3] is not None else "",
+                            "Serial No": str(asset_data[4]) if asset_data[4] is not None else "",
+                            "Purchaser": str(asset_data[5]) if asset_data[5] is not None else "",
+                            "Location": str(asset_data[6]) if asset_data[6] is not None else "",
+                            "Price": f"${asset_data[7]}" if asset_data[7] is not None else "",
+                            "Warranty": str(asset_data[8]) if asset_data[8] is not None else "",
+                            "Status": "Deployed",
+                            "Deployed To": str(asset_data[12]) if asset_data[12] is not None else "",
+                            "Department": str(asset_data[13]) if asset_data[13] is not None else "",
+                            "Deploy Date": str(asset_data[14]) if asset_data[14] is not None else "",
+                        }
+                        image_path = str(asset_data[11]) if asset_data[11] is not None else None
+                    else:
+                        asset_details = {"Name": "Asset not found"}
+                        image_path = None
+                elif is_disposed:
+                    cursor.execute(
+                        """
+                        SELECT name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                               bill_copy, purchase_date, image_path, disposal_type, disposal_date, amount_earned,
+                               disposal_reason, disposal_location, sale_details, sold_to
+                        FROM disposed_assets WHERE id = %s
+                        """,
+                        (asset[0],)
+                    )
+                    asset_data = cursor.fetchone()
+                    if asset_data:
+                        asset_details = {
+                            "Name": str(asset_data[0]) if asset_data[0] is not None else "",
+                            "Category": self.category_map.get(asset_data[1], "Unknown"),
+                            "Company": str(asset_data[2]) if asset_data[2] is not None else "",
+                            "Model": str(asset_data[3]) if asset_data[3] is not None else "",
+                            "Serial No": str(asset_data[4]) if asset_data[4] is not None else "",
+                            "Purchaser": str(asset_data[5]) if asset_data[5] is not None else "",
+                            "Location": str(asset_data[6]) if asset_data[6] is not None else "",
+                            "Price": f"${asset_data[7]}" if asset_data[7] is not None else "",
+                            "Warranty": str(asset_data[8]) if asset_data[8] is not None else "",
+                            "Purchase Date": str(asset_data[10]) if asset_data[10] is not None else "",
+                            "Disposal Type": str(asset_data[12]) if asset_data[12] is not None else "",
+                            "Disposal Date": str(asset_data[13]) if asset_data[13] is not None else "",
+                        }
+                        if asset_data[14] is not None:  # amount_earned
+                            asset_details["Amount Earned"] = f"${asset_data[14]}"
+                        if asset_data[15]:  # disposal_reason
+                            asset_details["Disposal Reason"] = str(asset_data[15])
+                        if asset_data[16]:  # disposal_location
+                            asset_details["Disposal Location"] = str(asset_data[16])
+                        if asset_data[17]:  # sale_details
+                            asset_details["Sale Details"] = str(asset_data[17])
+                        if asset_data[18]:  # sold_to
+                            asset_details["Sold To"] = str(asset_data[18])
+                        image_path = str(asset_data[11]) if asset_data[11] is not None else None
+                    else:
+                        asset_details = {"Name": "Asset not found"}
+                        image_path = None
+                else:
+                    cursor.execute(
+                        """
+                        SELECT name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                               bill_copy, purchase_date, image_path, status
+                        FROM assets WHERE id = %s
+                        """,
+                        (asset[0],)
+                    )
+                    asset_data = cursor.fetchone()
+                    if asset_data:
+                        asset_details = {
+                            "Name": str(asset_data[0]) if asset_data[0] is not None else "",
+                            "Category": self.category_map.get(asset_data[1], "Unknown"),
+                            "Company": str(asset_data[2]) if asset_data[2] is not None else "",
+                            "Model": str(asset_data[3]) if asset_data[3] is not None else "",
+                            "Serial No": str(asset_data[4]) if asset_data[4] is not None else "",
+                            "Purchaser": str(asset_data[5]) if asset_data[5] is not None else "",
+                            "Location": str(asset_data[6]) if asset_data[6] is not None else "",
+                            "Price": f"${asset_data[7]}" if asset_data[7] is not None else "",
+                            "Warranty": str(asset_data[8]) if asset_data[8] is not None else "",
+                            "Purchase Date": str(asset_data[10]) if asset_data[10] is not None else "",
+                            "Status": str(asset_data[12]) if asset_data[12] is not None else "",
+                        }
+                        image_path = str(asset_data[11]) if asset_data[11] is not None else None
+                    else:
+                        asset_details = {"Name": "Asset not found"}
+                        image_path = None
+
+            except mysql.connector.Error as err:
+                print(f"Error fetching asset details: {err}")
+                asset_details = {"Name": "Error loading asset details"}
+                image_path = None
+                self.page.open(ft.SnackBar(ft.Text(f"Error fetching asset details: {err}"), duration=4000))
+            finally:
+                if connection.is_connected():
+                    cursor.close()
+                    connection.close()
+                    print("Database connection closed")
+
+            # Create asset detail rows for the banner
+            asset_detail_rows = [
+                ft.Row(controls=[ft.Text(f"{key}: ", weight=ft.FontWeight.BOLD), ft.Text(value)])
+                for key, value in asset_details.items() if value
+            ]
+
+            # Validate and update the banner's image
+            if image_path and image_path.startswith("/images/") and self._is_supported_image_format(image_path):
+                image_content = ft.Image(
+                    src=image_path,
+                    width=600,
+                    height=500,
+                    fit=ft.ImageFit.CONTAIN,
+                    error_content=ft.Text("Failed to load image"),
+                )
+            else:
+                image_content = ft.Image(
+                    src="/images/placeholder.jpg",
+                    width=600,
+                    height=500,
+                    fit=ft.ImageFit.CONTAIN,
+                    error_content=ft.Text("Placeholder image not found"),
+                )
+                if image_path:
+                    print(f"Unsupported or invalid image format for banner: {image_path}")
+                    self.page.open(ft.SnackBar(
+                        ft.Text(f"Unsupported image format in banner: {image_path}. Supported formats are jpg, jpeg, png, gif."),
+                        duration=4000
+                    ))
+
+            # Update the banner content
+            self.banner.content.controls[0].controls = [
+                ft.Text("Asset Details:", color=ft.Colors.BLACK, weight=ft.FontWeight.BOLD, size=20)
+            ] + asset_detail_rows
+            self.banner.content.controls[1].content = image_content
+
         self.page.open(self.banner)
 
     def show_manage_asset_bottomsheet(self):
         self.page.show_bottom_sheet(self.manage_Asset)
 
     def create_asset_card(self, data, status_color, on_manage_click, on_select):
+        """Create a card for an available asset."""
         asset_id = data[0]
         name = str(data[1]) if data[1] is not None else ""
         category = str(data[2]) if data[2] is not None else ""
@@ -307,16 +670,21 @@ class AssetPagee(ft.Container):
         # Debug image path
         print(f"Processing asset: {name}, image_path: {image_path}")
         image_content = None
-        if image_path and image_path.startswith("/images/"):
+        if image_path and image_path.startswith("/images/") and self._is_supported_image_format(image_path):
             image_content = ft.Image(
                 src=image_path,
                 width=120,
                 height=120,
                 fit=ft.ImageFit.CONTAIN,
-                error_content=ft.Text(f"Image not found: {image_path}"),
+                error_content=ft.Text("Failed to load image"),
             )
         else:
-            print(f"Invalid or missing image_path for {name}: {image_path}")
+            print(f"Unsupported or invalid image format for asset {name}: {image_path}")
+            if image_path:
+                self.page.open(ft.SnackBar(
+                    ft.Text(f"Unsupported image format for asset {name}: {image_path}. Supported formats are jpg, jpeg, png, gif."),
+                    duration=4000
+                ))
 
         card_content = [
             ft.Row(
@@ -326,7 +694,7 @@ class AssetPagee(ft.Container):
                         content=ft.Row(
                             [
                                 ft.Container(width=15, height=15, bgcolor=status_color, border_radius=10),
-                                ft.Text(status, color=ft.colors.BLACK),
+                                ft.Text(status, color=ft.Colors.BLACK),
                             ],
                             spacing=5,
                             alignment=ft.MainAxisAlignment.END,
@@ -341,9 +709,9 @@ class AssetPagee(ft.Container):
             ft.Text(f"Model: {model}", size=14, color="#263238"),
             ft.ElevatedButton(
                 "Manage",
-                icon=ft.icons.PENDING_ACTIONS,
-                bgcolor=ft.colors.BLUE_300,
-                color=ft.colors.WHITE,
+                icon=ft.Icons.PENDING_ACTIONS,
+                bgcolor=ft.Colors.BLUE_300,
+                color=ft.Colors.WHITE,
                 on_click=lambda e: on_manage_click(asset_id, name),
                 width=100,
             ),
@@ -367,7 +735,7 @@ class AssetPagee(ft.Container):
                 bgcolor="#E3F2FD",
                 border_radius=12,
                 ink=True,
-                on_click=on_select,
+                on_click=lambda e: on_select(e, data),
                 width=300,
                 height=340 if image_content else 300,
             ),
@@ -375,6 +743,8 @@ class AssetPagee(ft.Container):
         )
 
     def create_deployed_card(self, data, status_color, on_manage_click, on_select):
+        """Create a card for a deployed asset."""
+        asset_id = data[0]
         name = str(data[1]) if data[1] is not None else ""
         category = str(data[2]) if data[2] is not None else ""
         company = str(data[3]) if data[3] is not None else ""
@@ -387,16 +757,21 @@ class AssetPagee(ft.Container):
         # Debug image path
         print(f"Processing deployed asset: {name}, image_path: {image_path}")
         image_content = None
-        if image_path and image_path.startswith("/images/"):
+        if image_path and image_path.startswith("/images/") and self._is_supported_image_format(image_path):
             image_content = ft.Image(
                 src=image_path,
                 width=120,
                 height=120,
                 fit=ft.ImageFit.CONTAIN,
-                error_content=ft.Text(f"Image not found: {image_path}"),
+                error_content=ft.Text("Failed to load image"),
             )
         else:
-            print(f"Invalid or missing image_path for {name}: {image_path}")
+            print(f"Unsupported or invalid image format for deployed asset {name}: {image_path}")
+            if image_path:
+                self.page.open(ft.SnackBar(
+                    ft.Text(f"Unsupported image format for deployed asset {name}: {image_path}. Supported formats are jpg, jpeg, png, gif."),
+                    duration=4000
+                ))
 
         card_content = [
             ft.Row(
@@ -406,7 +781,7 @@ class AssetPagee(ft.Container):
                         content=ft.Row(
                             [
                                 ft.Container(width=15, height=15, bgcolor=status_color, border_radius=10),
-                                ft.Text("Assigned", color=ft.colors.BLACK),
+                                ft.Text("Assigned", color=ft.Colors.BLACK),
                             ],
                             spacing=5,
                             alignment=ft.MainAxisAlignment.END,
@@ -424,9 +799,9 @@ class AssetPagee(ft.Container):
             ft.Text(f"Deploy Date: {deploy_date}", size=14, color="#263238"),
             ft.ElevatedButton(
                 "Manage",
-                icon=ft.icons.PENDING_ACTIONS,
-                bgcolor=ft.colors.BLUE_300,
-                color=ft.colors.WHITE,
+                icon=ft.Icons.PENDING_ACTIONS,
+                bgcolor=ft.Colors.BLUE_300,
+                color=ft.Colors.WHITE,
                 on_click=on_manage_click,
                 width=100,
             ),
@@ -450,77 +825,140 @@ class AssetPagee(ft.Container):
                 bgcolor="#E3F2FD",
                 border_radius=12,
                 ink=True,
-                on_click=on_select,
+                on_click=lambda e: on_select(e, data),
                 width=300,
                 height=340 if image_content else 300,
             ),
             elevation=5,
         )
 
-    def refresh_cards(self):
-        try:
-            mydb = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
+    def create_disposed_card(self, data, status_color, on_manage_click, on_select):
+        """Create a card for a disposed asset."""
+        asset_id = data[0]
+        name = str(data[1]) if data[1] is not None else ""
+        category = str(data[2]) if data[2] is not None else ""
+        company = str(data[3]) if data[3] is not None else ""
+        model = str(data[4]) if data[4] is not None else ""
+        purchase_date = str(data[5]) if data[5] is not None else ""
+        disposal_date = str(data[6]) if data[6] is not None else ""
+        disposal_type = str(data[7]) if data[7] is not None else ""
+        amount_earned = f"${data[8]}" if data[8] is not None else ""
+        disposal_reason = str(data[9]) if data[9] is not None else ""
+        disposal_location = str(data[10]) if data[10] is not None else ""
+        sale_details = str(data[11]) if data[11] is not None else ""
+        sold_to = str(data[12]) if data[12] is not None else ""
+        image_path = str(data[13]) if data[13] is not None else None
+
+        # Debug image path
+        print(f"Processing disposed asset: {name}, image_path: {image_path}")
+        image_content = None
+        if image_path and image_path.startswith("/images/") and self._is_supported_image_format(image_path):
+            image_content = ft.Image(
+                src=image_path,
+                width=120,
+                height=120,
+                fit=ft.ImageFit.CONTAIN,
+                error_content=ft.Text("Failed to load image"),
             )
-            # Refresh available assets
-            mycur = mydb.cursor()
-            mycur.execute("SELECT id, name, category, company, model, status, image_path FROM assets")
-            self.asset_data = mycur.fetchall()
-            print(f"Refreshed assets: {len(self.asset_data)} rows")
-            mycur.close()
+        else:
+            print(f"Unsupported or invalid image format for disposed asset {name}: {image_path}")
+            if image_path:
+                self.page.open(ft.SnackBar(
+                    ft.Text(f"Unsupported image format for disposed asset {name}: {image_path}. Supported formats are jpg, jpeg, png, gif."),
+                    duration=4000
+                ))
 
-            # Refresh deployed assets
-            mycur = mydb.cursor()
-            mycur.execute("SELECT id, name, category, company, model, deployed_to, user_department, deploy_date, image_path FROM deployed_assets")
-            self.deployed_data = mycur.fetchall()
-            print(f"Refreshed deployed_assets: {len(self.deployed_data)} rows")
-            mycur.close()
-            mydb.close()
-
-            # Update deployable cards
-            self.deployable_cards.controls = [
-                ft.Container(
-                    content=self.create_asset_card(
-                        data=x,
-                        status_color=ft.colors.LIGHT_GREEN_ACCENT_400,
-                        on_manage_click=lambda id, name: self.manage_Asset.open(asset_id=id, name=name),
-                        on_select=lambda e: self.show_banner(),
+        card_content = [
+            ft.Row(
+                [
+                    ft.Text(f"Name: {name}", size=16, weight=ft.FontWeight.BOLD, color="#263238"),
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Container(width=15, height=15, bgcolor=status_color, border_radius=10),
+                                ft.Text(disposal_type, color=ft.Colors.BLACK),
+                            ],
+                            spacing=5,
+                            alignment=ft.MainAxisAlignment.END,
+                        ),
+                        alignment=ft.alignment.center_right,
                     ),
-                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
-                    padding=ft.padding.all(10),
-                )
-                for x in self.asset_data
-            ]
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+            ft.Text(f"Category: {category}", size=14, color="#263238"),
+            ft.Text(f"Company: {company}", size=14, color="#263238"),
+            ft.Text(f"Model: {model}", size=14, color="#263238"),
+            ft.Text(f"Purchase Date: {purchase_date}", size=14, color="#263238"),
+            ft.Text(f"Disposal Date: {disposal_date}", size=14, color="#263238"),
+        ]
 
-            # Update deployed cards
-            self.deployed_cards.controls = [
-                ft.Container(
-                    content=self.create_deployed_card(
-                        data=data,
-                        status_color=ft.colors.LIGHT_BLUE_ACCENT_700,
-                        on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
-                        on_select=lambda e: self.show_banner(),
-                    ),
-                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
-                    padding=ft.padding.all(10),
-                )
-                for data in self.deployed_data
-            ]
+        if disposal_type == "Scrap" and amount_earned:
+            card_content.append(ft.Text(f"Amount Earned: {amount_earned}", size=14, color="#263238"))
+        elif disposal_type == "Dispose":
+            if disposal_reason:
+                card_content.append(ft.Text(f"Reason: {disposal_reason}", size=14, color="#263238"))
+            if disposal_location:
+                card_content.append(ft.Text(f"Disposal Location: {disposal_location}", size=14, color="#263238"))
+        elif disposal_type == "Sold":
+            if sold_to:
+                card_content.append(ft.Text(f"Sold To: {sold_to}", size=14, color="#263238"))
+            if sale_details:
+                card_content.append(ft.Text(f"Sale Details: {sale_details}", size=14, color="#263238"))
+            if amount_earned:
+                card_content.append(ft.Text(f"Amount Earned: {amount_earned}", size=14, color="#263238"))
 
+        card_content.append(
+            ft.ElevatedButton(
+                "Manage",
+                icon=ft.Icons.PENDING_ACTIONS,
+                bgcolor=ft.Colors.BLUE_300,
+                color=ft.Colors.WHITE,
+                on_click=on_manage_click,
+                width=100,
+            )
+        )
+
+        if image_content:
+            card_content.insert(0, ft.Container(
+                content=image_content,
+                alignment=ft.alignment.center,
+                margin=ft.margin.only(bottom=10),
+            ))
+
+        return ft.Card(
+            content=ft.Container(
+                content=ft.Column(
+                    card_content,
+                    spacing=5,
+                    alignment=ft.MainAxisAlignment.START,
+                ),
+                padding=15,
+                bgcolor="#E3F2FD",
+                border_radius=12,
+                ink=True,
+                on_click=lambda e: on_select(e, data),
+                width=300,
+                height=380 if image_content else 340,
+            ),
+            elevation=5,
+        )
+
+    def refresh_cards(self):
+        """Refresh the asset cards by re-fetching data with the current filter."""
+        try:
+            category_filter = self.category_dropdown.value
+            self.asset_data = self._fetch_assets(category_filter=category_filter)
+            self.deployed_data = self._fetch_deployed_assets(category_filter=category_filter)
+            self.disposed_data = self._fetch_disposed_assets(category_filter=category_filter)
+
+            # Update the cards in each tab
+            self.update_cards()
             self.page.update()
 
         except mysql.connector.Error as err:
             print(f"Error refreshing cards: {err}")
-
-    def show_banner(self):
-        self.page.open(self.banner)
-
-    def show_manage_asset_bottomsheet(self):
-        self.page.show_bottom_sheet(self.manage_Asset)
+            self.page.open(ft.SnackBar(ft.Text(f"Error refreshing cards: {err}"), duration=4000))
 
 def asset_page(page):
     return AssetPagee(page)

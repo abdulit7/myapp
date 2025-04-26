@@ -1,7 +1,9 @@
+import os
+os.environ["FLET_SECRET_KEY"] = "mysecret123"
 import flet as ft
 from pages.dashboard.home import Home
 from pages.dashboard.users import Users
-from components.userform import UserForm
+#from components.userform import UserForm
 from pages.dashboard.asset2 import AssetPagee
 from components.assetform import AssetFormPage
 from pages.dashboard.components import Components
@@ -45,7 +47,7 @@ def main(page: ft.Page):
         routes = {
             "/dashboard": Home,
             "/user": Users,
-            "/userform": UserForm,
+            #"/userform": UserForm,
             "/asset": AssetPagee,
             "/assetform": AssetFormPage,
             "/component": Components,
