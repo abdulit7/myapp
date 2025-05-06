@@ -93,41 +93,34 @@ class AssetPagee(ft.Container):
             height=55,
         )
 
-        # Category search dropdown
+        # Category dropdown
         self.category_dropdown = ft.Dropdown(
-            label="Filter by Category",
+            label="Select Category",
             options=[
-                ft.dropdown.Option(key=None, text="All Categories")
-            ] + [
-                ft.dropdown.Option(key=cat_id, text=cat_name)
-                for cat_id, cat_name in self.category_map.items()
-            ],
-            value=None,  # Default to "All Categories"
-            on_change=self.filter_by_category,
-            width=250,
-            border_radius=10,
-            bgcolor=ft.Colors.WHITE,
-            border_color=ft.Colors.GREY_400,
+                ft.dropdown.Option(key=str(id), text=name)
+                for id, name in self.category_map.items()
+            ] + [ft.dropdown.Option(key="all", text="All Categories")],
+            value="all",
+            width=200,
         )
 
-        # Clear filter button
-        self.clear_button = ft.ElevatedButton(
-            icon=ft.Icons.CLEAR,
-            text="Clear",
-            on_click=self.clear_filter,
+        # Filter button
+        self.filter_button = ft.ElevatedButton(
+            text="Filter",
+            icon=ft.Icons.FILTER_LIST,
+            on_click=self.filter_assets,
             style=ft.ButtonStyle(
-                bgcolor=ft.Colors.RED_500,
+                bgcolor=ft.Colors.BLUE_500,
                 color=ft.Colors.WHITE,
                 padding=ft.Padding(16, 12, 16, 12),
                 shape=ft.RoundedRectangleBorder(radius=12),
-                overlay_color=ft.Colors.with_opacity(0.15, ft.Colors.WHITE),
                 elevation=6,
             ),
             width=120,
             height=55,
         )
 
-        # Fetch initial asset data
+        # Fetch asset data
         self.asset_data = self._fetch_assets()
         self.deployed_data = self._fetch_deployed_assets()
         self.disposed_data = self._fetch_disposed_assets()
@@ -241,10 +234,10 @@ class AssetPagee(ft.Container):
                     controls=[
                         self.add_asset_button,
                         self.category_dropdown,
-                        self.clear_button,
+                        self.filter_button,
                     ],
                     alignment=ft.MainAxisAlignment.START,
-                    spacing=15,
+                    spacing=10,
                 ),
                 self.tabs,
             ],
@@ -271,7 +264,7 @@ class AssetPagee(ft.Container):
             self.page.open(ft.SnackBar(ft.Text(f"Database error: {error}"), duration=4000))
             return None
 
-    def _fetch_assets(self, category_filter=None):
+    def _fetch_assets(self, category_id=None):
         """Fetch available assets from the database, optionally filtered by category."""
         connection = self._get_db_connection()
         if not connection:
@@ -283,10 +276,10 @@ class AssetPagee(ft.Container):
                 SELECT id, name, category_id, company, model, status, image_path
                 FROM assets
             """
-            params = ()
-            if category_filter:
+            params = []
+            if category_id and category_id != "all":
                 query += " WHERE category_id = %s"
-                params = (category_filter,)
+                params.append(int(category_id))
 
             cursor.execute(query, params)
             asset_data_raw = cursor.fetchall()
@@ -307,7 +300,7 @@ class AssetPagee(ft.Container):
                 connection.close()
                 print("Database connection closed")
 
-    def _fetch_deployed_assets(self, category_filter=None):
+    def _fetch_deployed_assets(self, category_id=None):
         """Fetch deployed assets from the database, optionally filtered by category."""
         connection = self._get_db_connection()
         if not connection:
@@ -322,10 +315,10 @@ class AssetPagee(ft.Container):
                 FROM deployed_assets da
                 LEFT JOIN users u ON da.deployed_to = u.id
             """
-            params = ()
-            if category_filter:
+            params = []
+            if category_id and category_id != "all":
                 query += " WHERE da.category_id = %s"
-                params = (category_filter,)
+                params.append(int(category_id))
 
             cursor.execute(query, params)
             deployed_data_raw = cursor.fetchall()
@@ -337,7 +330,7 @@ class AssetPagee(ft.Container):
                     self.category_map.get(row[2], "Unknown"),  # Category Name
                     row[3],  # Company
                     row[4],  # Model
-                    f"{row[5]} (Emp ID: {row[6]})" if row[5] and row[6] else "Not Assigned",  # Deployed To (Name and Emp ID)
+                    f"{row[5]} (Emp ID: {row[6]})" if row[5] and row[6] else "Not Assigned",  # Deployed To
                     row[7],  # User Department
                     row[8],  # Deploy Date
                     row[9],  # Image Path
@@ -356,7 +349,7 @@ class AssetPagee(ft.Container):
                 connection.close()
                 print("Database connection closed")
 
-    def _fetch_disposed_assets(self, category_filter=None):
+    def _fetch_disposed_assets(self, category_id=None):
         """Fetch disposed assets from the database, optionally filtered by category."""
         connection = self._get_db_connection()
         if not connection:
@@ -369,10 +362,10 @@ class AssetPagee(ft.Container):
                        amount_earned, disposal_reason, disposal_location, sale_details, sold_to, image_path
                 FROM disposed_assets
             """
-            params = ()
-            if category_filter:
+            params = []
+            if category_id and category_id != "all":
                 query += " WHERE category_id = %s"
-                params = (category_filter,)
+                params.append(int(category_id))
 
             cursor.execute(query, params)
             disposed_data_raw = cursor.fetchall()
@@ -393,102 +386,6 @@ class AssetPagee(ft.Container):
                 cursor.close()
                 connection.close()
                 print("Database connection closed")
-
-    def filter_by_category(self, e):
-        """Filter assets by the selected category."""
-        selected_category_id = self.category_dropdown.value
-        try:
-            # Re-fetch data with the selected category filter
-            self.asset_data = self._fetch_assets(category_filter=selected_category_id)
-            self.deployed_data = self._fetch_deployed_assets(category_filter=selected_category_id)
-            self.disposed_data = self._fetch_disposed_assets(category_filter=selected_category_id)
-
-            # Update the cards in each tab
-            self.update_cards()
-            self.page.update()
-
-        except mysql.connector.Error as err:
-            print(f"Error filtering by category: {err}")
-            self.page.open(ft.SnackBar(ft.Text(f"Error filtering by category: {err}"), duration=4000))
-
-    def clear_filter(self, e):
-        """Clear the category filter and show all assets."""
-        self.category_dropdown.value = None  # Reset to "All Categories"
-        try:
-            # Re-fetch all data without a category filter
-            self.asset_data = self._fetch_assets()
-            self.deployed_data = self._fetch_deployed_assets()
-            self.disposed_data = self._fetch_disposed_assets()
-
-            # Update the cards in each tab
-            self.update_cards()
-            self.page.update()
-
-        except mysql.connector.Error as err:
-            print(f"Error clearing filter: {err}")
-            self.page.open(ft.SnackBar(ft.Text(f"Error clearing filter: {err}"), duration=4000))
-
-    def update_cards(self):
-        """Update the cards in all tabs based on the current data."""
-        no_assets_message = ft.Container(
-            content=ft.Text(
-                "No Assets Found",
-                size=20,
-                color=ft.Colors.RED_700,
-                weight=ft.FontWeight.BOLD,
-                text_align=ft.TextAlign.CENTER,
-            ),
-            alignment=ft.alignment.center,
-            padding=ft.padding.all(50),
-        )
-
-        # Update deployable cards
-        self.deployable_cards.controls = [
-            ft.Container(
-                content=self.create_asset_card(
-                    data=x,
-                    status_color=ft.Colors.LIGHT_GREEN_ACCENT_400,
-                    on_manage_click=lambda id, name: self.manage_Asset.open(asset_id=id, name=name),
-                    on_select=lambda e, asset=x: self.show_banner(asset=asset, is_deployed=False),
-                ),
-                col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
-                padding=ft.padding.all(10),
-            )
-            for x in self.asset_data
-        ]
-        self.tabs.tabs[0].content.controls = [self.deployable_cards if self.asset_data else no_assets_message]
-
-        # Update deployed cards
-        self.deployed_cards.controls = [
-            ft.Container(
-                content=self.create_deployed_card(
-                    data=data,
-                    status_color=ft.Colors.LIGHT_BLUE_ACCENT_700,
-                    on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
-                    on_select=lambda e, asset=data: self.show_banner(asset=asset, is_deployed=True),
-                ),
-                col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
-                padding=ft.padding.all(10),
-            )
-            for data in self.deployed_data
-        ]
-        self.tabs.tabs[1].content.controls = [self.deployed_cards if self.deployed_data else no_assets_message]
-
-        # Update disposed cards
-        self.disposed_cards.controls = [
-            ft.Container(
-                content=self.create_disposed_card(
-                    data=data,
-                    status_color=ft.Colors.RED_ACCENT_400 if data[7] == "Scrap" else (ft.Colors.YELLOW_ACCENT_400 if data[7] == "Sold" else ft.Colors.GREY_400),
-                    on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
-                    on_select=lambda e, asset=data: self.show_banner(asset=asset, is_disposed=True),
-                ),
-                col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
-                padding=ft.padding.all(10),
-            )
-            for data in self.disposed_data
-        ]
-        self.tabs.tabs[2].content.controls = [self.disposed_cards if self.disposed_data else no_assets_message]
 
     def _is_supported_image_format(self, image_path: str) -> bool:
         """Check if the image path has a supported extension (jpg, jpeg, png, gif)."""
@@ -944,16 +841,64 @@ class AssetPagee(ft.Container):
             elevation=5,
         )
 
-    def refresh_cards(self):
-        """Refresh the asset cards by re-fetching data with the current filter."""
-        try:
-            category_filter = self.category_dropdown.value
-            self.asset_data = self._fetch_assets(category_filter=category_filter)
-            self.deployed_data = self._fetch_deployed_assets(category_filter=category_filter)
-            self.disposed_data = self._fetch_disposed_assets(category_filter=category_filter)
+    def filter_assets(self, e):
+        """Handle filter button click to fetch assets by selected category."""
+        selected_category = self.category_dropdown.value
+        print(f"Filtering assets by category: {selected_category}")
+        self.refresh_cards(category_id=selected_category)
 
-            # Update the cards in each tab
-            self.update_cards()
+    def refresh_cards(self, category_id=None):
+        """Refresh the asset cards by re-fetching data, optionally filtered by category."""
+        try:
+            self.asset_data = self._fetch_assets(category_id=category_id)
+            self.deployed_data = self._fetch_deployed_assets(category_id=category_id)
+            self.disposed_data = self._fetch_disposed_assets(category_id=category_id)
+
+            # Update deployable cards
+            self.deployable_cards.controls = [
+                ft.Container(
+                    content=self.create_asset_card(
+                        data=x,
+                        status_color=ft.Colors.LIGHT_GREEN_ACCENT_400,
+                        on_manage_click=lambda id, name: self.manage_Asset.open(asset_id=id, name=name),
+                        on_select=lambda e, asset=x: self.show_banner(asset=asset, is_deployed=False),
+                    ),
+                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                    padding=ft.padding.all(10),
+                )
+                for x in self.asset_data
+            ]
+
+            # Update deployed cards
+            self.deployed_cards.controls = [
+                ft.Container(
+                    content=self.create_deployed_card(
+                        data=data,
+                        status_color=ft.Colors.LIGHT_BLUE_ACCENT_700,
+                        on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
+                        on_select=lambda e, asset=data: self.show_banner(asset=asset, is_deployed=True),
+                    ),
+                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                    padding=ft.padding.all(10),
+                )
+                for data in self.deployed_data
+            ]
+
+            # Update disposed cards
+            self.disposed_cards.controls = [
+                ft.Container(
+                    content=self.create_disposed_card(
+                        data=data,
+                        status_color=ft.Colors.RED_ACCENT_400 if data[7] == "Scrap" else (ft.Colors.YELLOW_ACCENT_400 if data[7] == "Sold" else ft.Colors.GREY_400),
+                        on_manage_click=lambda e: self.show_manage_asset_bottomsheet(),
+                        on_select=lambda e, asset=data: self.show_banner(asset=asset, is_disposed=True),
+                    ),
+                    col={"xs": 12, "sm": 6, "md": 4, "xl": 3},
+                    padding=ft.padding.all(10),
+                )
+                for data in self.disposed_data
+            ]
+
             self.page.update()
 
         except mysql.connector.Error as err:

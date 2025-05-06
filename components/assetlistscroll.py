@@ -1,6 +1,7 @@
 import flet as ft
 import mysql.connector
 import asyncio
+import os.path
 
 class ListScroll(ft.Container):
     def __init__(self, page: ft.Page):
@@ -8,6 +9,9 @@ class ListScroll(ft.Container):
         self.page = page
         self.expand = True  # Make the container expand to fill available space
         self.padding = ft.padding.all(20)
+        
+        # Supported image extensions
+        self.supported_image_extensions = {".jpg", ".jpeg", ".png", ".gif"}
         
         # Stylish ListView with gradient background
         self.lv = ft.ListView(
@@ -96,6 +100,13 @@ class ListScroll(ft.Container):
             self.page.update()
             return None
 
+    def is_supported_image_format(self, image_path: str) -> bool:
+        """Check if the image path has a supported extension (jpg, jpeg, png, gif)."""
+        if not image_path:
+            return False
+        _, ext = os.path.splitext(image_path.lower())
+        return ext in self.supported_image_extensions
+
     def setup_list_view(self):
         # Get the total number of assets
         self.total_assets = self.fetch_total_assets()
@@ -161,7 +172,16 @@ class ListScroll(ft.Container):
                         category = self.category_map.get(category_id, "N/A")
                         status = asset[13] if len(asset) > 13 and asset[13] is not None else "N/A"
                         model = str(asset[4]) if len(asset) > 4 and asset[4] is not None else "N/A"
-                        image_path = asset[12] if len(asset) > 12 and asset[12] else "/images/placeholder.jpg"
+                        image_path = asset[15] if len(asset) > 15 and asset[15] else None
+
+                        # Validate image path
+                        if image_path and self.is_supported_image_format(image_path):
+                            # Assuming images are in the assets directory or served via a URL
+                            final_image_path = image_path
+                            print(f"Using image path for {name}: {final_image_path}")
+                        else:
+                            final_image_path = "/images/placeholder.jpg"
+                            print(f"Invalid or missing image path for {name}: {image_path}, using placeholder")
 
                         # Determine status color and icon
                         status_color = {
@@ -182,7 +202,7 @@ class ListScroll(ft.Container):
                                     # Circular image
                                     ft.Container(
                                         content=ft.Image(
-                                            src=image_path,
+                                            src=final_image_path,
                                             width=60,
                                             height=60,
                                             fit=ft.ImageFit.COVER,
@@ -281,6 +301,9 @@ class ListScroll(ft.Container):
                         print(f"Displayed asset: {name}")
                     except Exception as e:
                         print(f"Error displaying asset at index {self.current_asset_index}: {e}")
+                        self.page.snack_bar = ft.SnackBar(ft.Text(f"Error displaying asset: {e}"))
+                        self.page.snack_bar.open = True
+                        self.page.update()
                 else:
                     print(f"No asset found at index {self.current_asset_index}")
 

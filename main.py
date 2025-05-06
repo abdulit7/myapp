@@ -6,14 +6,14 @@ from pages.dashboard.users import Users
 #from components.userform import UserForm
 from pages.dashboard.asset2 import AssetPagee
 from components.assetform import AssetFormPage
-from pages.dashboard.components import Components
+from pages.dashboard.components import components_page
 from pages.dashboard.saleforce import SaleForcePage
 from pages.dashboard.category import Category
 from components.assetdialog import AssetDialog
 from pages.dashboard.department import Department
 from nav.sidebar import TopBar  # Import the updated TopBar without sidebar toggle
-from components.componentform import ComponentFormPage
-from pages.dashboard.consumable import consumable_page
+from components.componentform import create_component_form
+from pages.dashboard.consumable import consumables_page
 import os
 
 def main(page: ft.Page):
@@ -50,13 +50,13 @@ def main(page: ft.Page):
             #"/userform": UserForm,
             "/asset": AssetPagee,
             "/assetform": AssetFormPage,
-            "/component": Components,
+            "/component": components_page,
             "/saleforce": SaleForcePage,
             "/category": Category,
-            "/componentform": ComponentFormPage,
+            "/componentform": create_component_form,
             "/department": Department,
             "/assetformdialog": AssetDialog,
-            "/consumable": consumable_page,
+            "/consumable": consumables_page,
             "/login": lambda page: ft.Container(
                 content=ft.Column([
                     ft.Text("Login", size=24, weight=ft.FontWeight.BOLD),
@@ -130,7 +130,7 @@ def main(page: ft.Page):
     page.on_resize = on_resize
     page.on_route_change = change_route
     page.on_view_pop = view_pop
-    page.go("/assetform")
+    page.go("/component")
 
 #Run in web browser mode with upload_dir set
 # ft.app(

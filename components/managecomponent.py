@@ -10,8 +10,12 @@ class ManageComponentDialog:
         self.parent = parent
         self.component_id = None
         self.component_name = ""
-        self.initial_status = None  # To track the component's current status
         self.snackbar_container = None
+        self.is_deployed = False  # Track if component is deployed
+
+        # Cache category data to avoid repeated JOINs (for future use)
+        self.category_map = {}
+        self.fetch_categories()
 
         # Form Fields
         self.name_field = CustomTextField(label="Component Name", disabled=True)
@@ -47,7 +51,7 @@ class ManageComponentDialog:
             visible=False
         )
         self.deploy_target = ft.Dropdown(
-            label="Select Target",
+            label="Select User",
             options=[],
             expand=True
         )
@@ -101,18 +105,18 @@ class ManageComponentDialog:
         # Save and Cancel Buttons
         self.save_button = ft.ElevatedButton(
             "Save",
-            icon=ft.icons.SAVE,
-            bgcolor=ft.colors.GREEN_400,
-            color=ft.colors.WHITE,
+            icon=ft.Icons.SAVE,
+            bgcolor=ft.Colors.GREEN_400,
+            color=ft.Colors.WHITE,
             width=200,
             on_click=self.save_button_clicked
         )
         self.cancel_button = ft.ElevatedButton(
             "Cancel",
-            icon=ft.icons.CANCEL,
-            bgcolor=ft.colors.RED_400,
+            icon=ft.Icons.CANCEL,
+            bgcolor=ft.Colors.RED_400,
             width=200,
-            color=ft.colors.WHITE,
+            color=ft.Colors.WHITE,
             on_click=self.cancel,
         )
 
@@ -140,6 +144,41 @@ class ManageComponentDialog:
         )
         page.overlay.append(self.dialog)
         page.update()
+
+    def fetch_categories(self):
+        """Fetch and cache category data."""
+        connection = self._get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute("SELECT id, name FROM category")
+                self.category_map = {row[0]: row[1] for row in cursor.fetchall()}
+                print(f"Cached categories in ManageComponentDialog: {self.category_map}")
+            except mysql.connector.Error as err:
+                print(f"Error fetching categories: {err}")
+                self.show_snackbar(f"Error fetching categories: {err}", ft.Colors.RED_400)
+            finally:
+                if connection.is_connected():
+                    cursor.close()
+                    connection.close()
+                    print("Database connection closed")
+
+    def _get_db_connection(self):
+        """Establish and return a database connection."""
+        try:
+            connection = mysql.connector.connect(
+                host="200.200.200.23",
+                user="root",
+                password="Pak@123",
+                database="itasset",
+                auth_plugin='mysql_native_password'
+            )
+            print("Database connection successful")
+            return connection
+        except mysql.connector.Error as error:
+            print(f"Database connection failed: {error}")
+            self.show_snackbar(f"Database error: {error}", ft.Colors.RED_400)
+            return None
 
     def cancel(self, e):
         self.dialog.open = False
@@ -183,7 +222,7 @@ class ManageComponentDialog:
             self.department_dropdown.visible = False
             self.deploy_target.options = []
             self.deploy_target.value = None
-        else:
+        else:  # Available
             self.deploy_options.visible = False
             self.disposal_options.visible = False
             self.department_dropdown.visible = False
@@ -210,188 +249,260 @@ class ManageComponentDialog:
         self.page.update()
 
     def fetch_departments(self):
-        try:
-            conn = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
-            )
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM department ORDER BY name")
-            options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
-            self.department_dropdown.options = options if options else [ft.dropdown.Option("No departments available")]
-            self.department_dropdown.value = None
-            self.deploy_target.options = []
-            self.deploy_target.value = None
-            cursor.close()
-            conn.close()
-        except mysql.connector.Error as err:
-            print(f"Error fetching departments: {err}")
-            self.department_dropdown.options = [ft.dropdown.Option("Error loading departments")]
+        connection = self._get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute("SELECT id, name FROM department ORDER BY name")
+                options = [ft.dropdown.Option(key=row[0], text=row[1]) for row in cursor.fetchall()]
+                self.department_dropdown.options = options if options else [ft.dropdown.Option("No departments available")]
+                self.department_dropdown.value = None
+                self.deploy_target.options = []
+                self.deploy_target.value = None
+            except mysql.connector.Error as err:
+                print(f"Error fetching departments: {err}")
+                self.department_dropdown.options = [ft.dropdown.Option("Error loading departments")]
+                self.show_snackbar(f"Error fetching departments: {err}", ft.Colors.RED_400)
+            finally:
+                if connection.is_connected():
+                    cursor.close()
+                    connection.close()
+                    print("Database connection closed")
         self.page.update()
 
-    def fetch_users_by_department(self, department_name):
-        try:
-            conn = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
-            )
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT u.user_id 
-                FROM users u 
-                JOIN department d ON u.department_id = d.id 
-                WHERE d.name = %s 
-                ORDER BY u.user_id
-                """,
-                (department_name,)
-            )
-            options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
-            self.deploy_target.options = options if options else [ft.dropdown.Option("No users in this department")]
-            self.deploy_target.value = None
-            cursor.close()
-            conn.close()
-        except mysql.connector.Error as err:
-            print(f"Error fetching users: {err}")
-            self.deploy_target.options = [ft.dropdown.Option("Error loading users")]
+    def fetch_users_by_department(self, department_id):
+        connection = self._get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    SELECT u.id, u.name, u.emp_id
+                    FROM users u
+                    JOIN department d ON u.department_id = d.id
+                    WHERE d.id = %s
+                    ORDER BY u.name
+                    """,
+                    (department_id,)
+                )
+                users = cursor.fetchall()
+                options = [
+                    ft.dropdown.Option(
+                        key=row[0],  # User ID as the value
+                        text=f"{row[1]} (Emp ID: {row[2]})"  # Display as "Name (Emp ID: XXX)"
+                    ) for row in users
+                ]
+                self.deploy_target.options = options if options else [ft.dropdown.Option("No users in this department")]
+                self.deploy_target.value = None
+            except mysql.connector.Error as err:
+                print(f"Error fetching users: {err}")
+                self.deploy_target.options = [ft.dropdown.Option("Error loading users")]
+                self.show_snackbar(f"Error fetching users: {err}", ft.Colors.RED_400)
+            finally:
+                if connection.is_connected():
+                    cursor.close()
+                    connection.close()
+                    print("Database connection closed")
         self.page.update()
 
     def fetch_deploy_targets(self):
-        try:
-            conn = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
-            )
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM department ORDER BY name")
-            options = [ft.dropdown.Option(row[0]) for row in cursor.fetchall()]
-            self.deploy_target.options = options if options else [ft.dropdown.Option("No departments available")]
-            self.deploy_target.value = None
-            cursor.close()
-            conn.close()
-        except mysql.connector.Error as err:
-            print(f"Error fetching departments: {err}")
-            self.deploy_target.options = [ft.dropdown.Option("Error loading departments")]
+        connection = self._get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute("SELECT id, name FROM department ORDER BY name")
+                options = [ft.dropdown.Option(key=row[0], text=row[1]) for row in cursor.fetchall()]
+                self.deploy_target.options = options if options else [ft.dropdown.Option("No departments available")]
+                self.deploy_target.value = None
+            except mysql.connector.Error as err:
+                print(f"Error fetching departments: {err}")
+                self.deploy_target.options = [ft.dropdown.Option("Error loading departments")]
+                self.show_snackbar(f"Error fetching departments: {err}", ft.Colors.RED_400)
+            finally:
+                if connection.is_connected():
+                    cursor.close()
+                    connection.close()
+                    print("Database connection closed")
         self.page.update()
 
     async def save_button_clicked(self, e):
         if not self.component_id:
-            await self.show_snackbar("No component selected!", ft.colors.RED_400)
+            await self.show_snackbar("No component selected!", ft.Colors.RED_400)
             return
 
         status = self.status.value
         if status == "Deployed":
             if not self.deploy_to.value:
-                await self.show_snackbar("Please select Deploy To!", ft.colors.RED_400)
+                await self.show_snackbar("Please select Deploy To!", ft.Colors.RED_400)
                 return
             if self.deploy_to.value == "User" and not self.department_dropdown.value:
-                await self.show_snackbar("Please select a Department!", ft.colors.RED_400)
+                await self.show_snackbar("Please select a Department!", ft.Colors.RED_400)
                 return
             if not self.deploy_target.value:
-                await self.show_snackbar("Please select a User or Department!", ft.colors.RED_400)
+                await self.show_snackbar("Please select a User or Department!", ft.Colors.RED_400)
                 return
         elif status == "Scrap":
             if not self.scrap_amount_field.value:
-                await self.show_snackbar("Please enter the amount earned from scrap!", ft.colors.RED_400)
+                await self.show_snackbar("Please enter the amount earned from scrap!", ft.Colors.RED_400)
                 return
             try:
                 float(self.scrap_amount_field.value)
             except ValueError:
-                await self.show_snackbar("Amount earned must be a valid number!", ft.colors.RED_400)
+                await self.show_snackbar("Amount earned must be a valid number!", ft.Colors.RED_400)
                 return
         elif status == "Dispose":
             if not self.dispose_reason_field.value:
-                await self.show_snackbar("Please enter the reason for disposal!", ft.colors.RED_400)
+                await self.show_snackbar("Please enter the reason for disposal!", ft.Colors.RED_400)
                 return
             if not self.dispose_location_field.value:
-                await self.show_snackbar("Please enter the disposal location!", ft.colors.RED_400)
+                await self.show_snackbar("Please enter the disposal location!", ft.Colors.RED_400)
                 return
         elif status == "Sold":
             if not self.sold_to_field.value:
-                await self.show_snackbar("Please enter the person to whom the component was sold!", ft.colors.RED_400)
+                await self.show_snackbar("Please enter the person to whom the component was sold!", ft.Colors.RED_400)
                 return
             if not self.sale_details_field.value:
-                await self.show_snackbar("Please enter the sale details!", ft.colors.RED_400)
+                await self.show_snackbar("Please enter the sale details!", ft.Colors.RED_400)
                 return
             if not self.sold_amount_field.value:
-                await self.show_snackbar("Please enter the amount received from the sale!", ft.colors.RED_400)
+                await self.show_snackbar("Please enter the amount received from the sale!", ft.Colors.RED_400)
                 return
             try:
                 float(self.sold_amount_field.value)
             except ValueError:
-                await self.show_snackbar("Amount received must be a valid number!", ft.colors.RED_400)
+                await self.show_snackbar("Amount received must be a valid number!", ft.Colors.RED_400)
                 return
+
+        connection = self._get_db_connection()
+        if not connection:
+            return
 
         try:
-            conn = mysql.connector.connect(
-                host="200.200.200.23",
-                user="root",
-                password="Pak@123",
-                database="itasset",
-                auth_plugin='mysql_native_password'
-            )
-            cursor = conn.cursor()
+            cursor = connection.cursor()
 
-            # Determine the source table based on initial status
-            source_table = "component" if self.initial_status == "Available" else "deployed_components"
-            cursor.execute(
-                """
-                SELECT name, category, company, model, serial_no, purchaser, location, warranty,
-                       category_id, price, status, purchase_date, image_path, model_no, min_qty,
-                       total_qty, remaining_qty, location_id, purchase_cost
-                FROM {} WHERE id = %s
-                """.format(source_table),
-                (self.component_id,)
-            )
-            component = cursor.fetchone()
-            if not component:
-                await self.show_snackbar("Component not found!", ft.colors.RED_400)
-                conn.close()
-                return
+            if status == "Available" and self.is_deployed:
+                # Fetch component details from deployed_components
+                cursor.execute(
+                    """
+                    SELECT name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                           bill_copy, purchase_date, image_path, status
+                    FROM deployed_components WHERE id = %s
+                    """,
+                    (self.component_id,)
+                )
+                component = cursor.fetchone()
+                if not component:
+                    await self.show_snackbar("Component not found in deployed_components!", ft.Colors.RED_400)
+                    return
 
-            if status == "Deployed":
-                # Insert into deployed_components
+                # Insert into component
+                cursor.execute(
+                    """
+                    INSERT INTO component (
+                        id, name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                        bill_copy, purchase_date, image_path, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (self.component_id,) + component
+                )
+
+                # Delete from deployed_components
+                cursor.execute("DELETE FROM deployed_components WHERE id = %s", (self.component_id,))
+
+            elif status == "Deployed":
+                # Fetch component details
+                cursor.execute(
+                    """
+                    SELECT name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                           bill_copy, purchase_date, image_path
+                    FROM component WHERE id = %s
+                    """,
+                    (self.component_id,)
+                )
+                component = cursor.fetchone()
+                if not component:
+                    await self.show_snackbar("Component not found!", ft.Colors.RED_400)
+                    return
+
+                # Get user_department for users
                 user_department = ""
+                deployed_to_value = self.deploy_target.value
                 if self.deploy_to.value == "User":
-                    cursor.execute(
-                        "SELECT d.name FROM users u LEFT JOIN department d ON u.department_id = d.id WHERE u.user_id = %s",
-                        (self.deploy_target.value,)
-                    )
-                    result = cursor.fetchone()
-                    user_department = result[0] if result and result[0] else ""
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT d.name 
+                            FROM users u 
+                            LEFT JOIN department d ON u.department_id = d.id 
+                            WHERE u.id = %s
+                            """,
+                            (self.deploy_target.value,)
+                        )
+                        result = cursor.fetchone()
+                        user_department = result[0] if result and result[0] else ""
+                    except mysql.connector.Error as err:
+                        print(f"Error fetching user department for user {self.deploy_target.value}: {err}")
+                        await self.show_snackbar(f"Error fetching user department: {err}", ft.Colors.RED_400)
+                        return
+                else:  # Department
+                    try:
+                        # Fetch the department name for user_department
+                        cursor.execute(
+                            "SELECT name FROM department WHERE id = %s",
+                            (self.deploy_target.value,)
+                        )
+                        result = cursor.fetchone()
+                        user_department = result[0] if result and result[0] else ""
+                    except mysql.connector.Error as err:
+                        print(f"Error fetching department name for department {self.deploy_target.value}: {err}")
+                        await self.show_snackbar(f"Error fetching department name: {err}", ft.Colors.RED_400)
+                        return
 
+                # Insert into deployed_components
                 cursor.execute(
                     """
                     INSERT INTO deployed_components (
-                        name, category, company, model, serial_no, purchaser, location, warranty,
-                        category_id, price, status, purchase_date, image_path, model_no, min_qty,
-                        total_qty, remaining_qty, location_id, purchase_cost, deployed_to,
-                        user_department, deploy_date
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                        bill_copy, purchase_date, image_path, deployed_to, user_department, deploy_date
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
-                        component[0], component[1], component[2], component[3], component[4],
-                        component[5], component[6], component[7], component[8], component[9],
-                        "Deployed", component[11], component[12], component[13], component[14],
-                        component[15], component[16], component[17], component[18],
-                        self.deploy_target.value,
-                        self.deploy_target.value if self.deploy_to.value == "Department" else user_department,
+                        component[0],  # name
+                        component[1],  # category_id
+                        component[2],  # company
+                        component[3],  # model
+                        component[4],  # serial_no
+                        component[5],  # purchaser
+                        component[6],  # location
+                        component[7],  # price
+                        component[8],  # warranty
+                        component[9],  # bill_copy
+                        component[10],  # purchase_date
+                        component[11],  # image_path
+                        deployed_to_value,
+                        user_department,
                         datetime.datetime.now().strftime("%Y-%m-%d")
                     )
                 )
-                # Delete from source table
-                cursor.execute(f"DELETE FROM {source_table} WHERE id = %s", (self.component_id,))
+                # Delete from component
+                cursor.execute("DELETE FROM component WHERE id = %s", (self.component_id,))
 
             elif status in ["Scrap", "Dispose", "Sold"]:
+                # Fetch component details
+                source_table = "deployed_components" if self.is_deployed else "component"
+                cursor.execute(
+                    f"""
+                    SELECT name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                           bill_copy, purchase_date, image_path
+                    FROM {source_table} WHERE id = %s
+                    """,
+                    (self.component_id,)
+                )
+                component = cursor.fetchone()
+                if not component:
+                    await self.show_snackbar(f"Component not found in {source_table}!", ft.Colors.RED_400)
+                    return
+
                 # Prepare data for disposed_components
                 disposal_type = status
                 amount_earned = None
@@ -414,18 +525,24 @@ class ManageComponentDialog:
                 cursor.execute(
                     """
                     INSERT INTO disposed_components (
-                        name, category, company, model, serial_no, purchaser, location, warranty,
-                        category_id, price, purchase_date, image_path, model_no, min_qty,
-                        total_qty, remaining_qty, location_id, purchase_cost, disposal_type,
-                        disposal_date, amount_earned, disposal_reason, disposal_location,
-                        sale_details, sold_to
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        name, category_id, company, model, serial_no, purchaser, location, price, warranty,
+                        bill_copy, purchase_date, image_path, disposal_type, disposal_date, amount_earned,
+                        disposal_reason, disposal_location, sale_details, sold_to
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
-                        component[0], component[1], component[2], component[3], component[4],
-                        component[5], component[6], component[7], component[8], component[9],
-                        component[11], component[12], component[13], component[14],
-                        component[15], component[16], component[17], component[18],
+                        component[0],  # name
+                        component[1],  # category_id
+                        component[2],  # company
+                        component[3],  # model
+                        component[4],  # serial_no
+                        component[5],  # purchaser
+                        component[6],  # location
+                        component[7],  # price
+                        component[8],  # warranty
+                        component[9],  # bill_copy
+                        component[10],  # purchase_date
+                        component[11],  # image_path
                         disposal_type,
                         datetime.datetime.now().strftime("%Y-%m-%d"),
                         amount_earned,
@@ -438,51 +555,33 @@ class ManageComponentDialog:
                 # Delete from source table
                 cursor.execute(f"DELETE FROM {source_table} WHERE id = %s", (self.component_id,))
 
-            else:  # Available
-                if self.initial_status == "Deployed":
-                    cursor.execute(
-                        """
-                        INSERT INTO component (
-                            name, category, company, model, serial_no, purchaser, location, warranty,
-                            category_id, price, status, purchase_date, image_path, model_no, min_qty,
-                            total_qty, remaining_qty, location_id, purchase_cost
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            component[0], component[1], component[2], component[3], component[4],
-                            component[5], component[6], component[7], component[8], component[9],
-                            "Available", component[11], component[12], component[13], component[14],
-                            component[15], component[16], component[17], component[18]
-                        )
-                    )
-                    cursor.execute("DELETE FROM deployed_components WHERE id = %s", (self.component_id,))
-                else:
-                    cursor.execute("UPDATE component SET status = %s WHERE id = %s", ("Available", self.component_id))
+            else:  # Available (non-deployed)
+                cursor.execute("UPDATE component SET status = %s WHERE id = %s", (status, self.component_id))
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            connection.commit()
 
             # Refresh parent UI
             self.parent.refresh_cards()
 
             self.dialog.open = False
             self.page.update()
-            await self.show_snackbar("Component updated successfully!", ft.colors.GREEN_400)
+            await self.show_snackbar("Component updated successfully!", ft.Colors.GREEN_400)
 
         except mysql.connector.Error as err:
-            print(f"Database error: {err}")
-            await self.show_snackbar(f"Database error: {err}", ft.colors.RED_400)
-        except ValueError as ve:
-            print(f"Value error: {ve}")
-            await self.show_snackbar(f"Value error: {ve}", ft.colors.RED_400)
+            print(f"Database error in save_button_clicked: {err}")
+            await self.show_snackbar(f"Database error: {err}", ft.Colors.RED_400)
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+                print("Database connection closed")
 
     async def show_snackbar(self, message, color):
         if self.snackbar_container:
             self.dialog.content.controls.remove(self.snackbar_container)
 
         self.snackbar_container = ft.Container(
-            content=ft.Text(message, color=ft.colors.WHITE),
+            content=ft.Text(message, color=ft.Colors.WHITE),
             bgcolor=color,
             padding=10,
             border_radius=5,
@@ -508,7 +607,6 @@ class ManageComponentDialog:
         self.component_name = name
         self.name_field.value = name
         self.status.value = None
-        self.initial_status = None
         self.deploy_options.visible = False
         self.disposal_options.visible = False
         self.deploy_to.value = None
@@ -529,42 +627,26 @@ class ManageComponentDialog:
         self.sold_to_field.visible = False
         self.sale_details_field.visible = False
         self.sold_amount_field.visible = False
-
-        # Determine the initial status
-        if component_id:
-            try:
-                conn = mysql.connector.connect(
-                    host="200.200.200.23",
-                    user="root",
-                    password="Pak@123",
-                    database="itasset",
-                    auth_plugin='mysql_native_password'
-                )
-                cursor = conn.cursor()
-                # Check component table
-                cursor.execute("SELECT status FROM component WHERE id = %s", (component_id,))
-                result = cursor.fetchone()
-                if result:
-                    self.initial_status = result[0]
-                else:
-                    # Check deployed_components table
-                    cursor.execute("SELECT status FROM deployed_components WHERE id = %s", (component_id,))
-                    result = cursor.fetchone()
-                    if result:
-                        self.initial_status = result[0]
-                cursor.close()
-                conn.close()
-
-                if self.initial_status:
-                    self.status.value = self.initial_status
-                    if self.initial_status == "Deployed":
-                        self.deploy_options.visible = True
-                        self.fetch_departments()
-            except mysql.connector.Error as err:
-                print(f"Error fetching component status: {err}")
-
         if self.snackbar_container:
             self.dialog.content.controls.remove(self.snackbar_container)
             self.snackbar_container = None
+
+        # Check if component is deployed
+        connection = self._get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute("SELECT id FROM deployed_components WHERE id = %s", (component_id,))
+                self.is_deployed = bool(cursor.fetchone())
+                print(f"Component {component_id} is_deployed: {self.is_deployed}")
+            except mysql.connector.Error as err:
+                print(f"Error checking component status: {err}")
+                self.show_snackbar(f"Error checking component status: {err}", ft.Colors.RED_400)
+            finally:
+                if connection.is_connected():
+                    cursor.close()
+                    connection.close()
+                    print("Database connection closed")
+
         self.dialog.open = True
         self.page.update()
